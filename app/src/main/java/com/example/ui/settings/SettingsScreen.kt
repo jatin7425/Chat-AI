@@ -241,9 +241,11 @@ fun SpacesBackendSettingsScreen(
     // Convenience presets for this dev setup -- LAN only works on the same Wi-Fi as the backend
     // machine and breaks if its IP changes. "Custom" just leaves the field free-typed. (A public
     // tunnel preset was tried and dropped -- localtunnel's free subdomains aren't stable across
-    // reconnects, so it silently pointed at the wrong URL after any restart.)
+    // reconnects, so it silently pointed at the wrong URL after any restart.) "Deployed (Vercel)"
+    // is the real production backend once it's no longer just a local/tunnel setup.
     val presets = remember(buildDefaultUrl) {
         listOf(
+            "Deployed (Vercel)" to "https://chat-ai-beryl-two.vercel.app",
             "LAN (same Wi-Fi only)" to buildDefaultUrl,
             "Custom" to null
         )
@@ -438,6 +440,17 @@ fun McpSettingsScreen(
 
     var mcpUrl by remember { mutableStateOf(userConfig?.mcpServerUrl ?: "") }
 
+    val mcpPresets = remember {
+        listOf(
+            "Deployed (Vercel)" to "https://chat-ai-ten-delta.vercel.app/mcp",
+            "Custom" to null
+        )
+    }
+    var mcpPresetsExpanded by remember { mutableStateOf(false) }
+    var selectedMcpPresetLabel by remember(mcpUrl, mcpPresets) {
+        mutableStateOf(mcpPresets.firstOrNull { it.second != null && it.second == mcpUrl }?.first ?: "Custom")
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -474,6 +487,42 @@ fun McpSettingsScreen(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            Text(
+                text = "Connect via",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Medium,
+                fontSize = 14.sp
+            )
+
+            ExposedDropdownMenuBox(
+                expanded = mcpPresetsExpanded,
+                onExpandedChange = { mcpPresetsExpanded = it }
+            ) {
+                OutlinedTextField(
+                    value = selectedMcpPresetLabel,
+                    onValueChange = {},
+                    readOnly = true,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = mcpPresetsExpanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = customTextFieldColors()
+                )
+                ExposedDropdownMenu(expanded = mcpPresetsExpanded, onDismissRequest = { mcpPresetsExpanded = false }) {
+                    mcpPresets.forEach { (label, url) ->
+                        DropdownMenuItem(
+                            text = { Text(label) },
+                            onClick = {
+                                selectedMcpPresetLabel = label
+                                if (url != null) mcpUrl = url
+                                mcpPresetsExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
             Text(
                 text = "Server URL",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
