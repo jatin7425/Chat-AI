@@ -1,7 +1,6 @@
 package com.example
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -28,18 +27,15 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.MainViewModel
 import com.example.ui.Screen
-import com.example.ui.chat.ChatScreen
-import com.example.ui.chat.DualPersonaChatScreen
-import com.example.ui.memory.MemoryRecapScreen
-import com.example.ui.onboarding.OnboardingScreen
-import com.example.ui.personas.CreatePersonaSheet
-import com.example.ui.personas.PersonasScreen
-import com.example.ui.settings.ChatModelScreen
-import com.example.ui.settings.LiteLlmServerScreen
+import com.example.ui.auth.AuthScreen
 import com.example.ui.settings.SettingsScreen
 import com.example.ui.settings.SpacesBackendSettingsScreen
+import com.example.ui.spaces.dashboard.CreateSpaceSheet
+import com.example.ui.spaces.dashboard.SpacesDashboardScreen
+import com.example.ui.spaces.home.SpaceHomeScreen
+import com.example.ui.spaces.personas.CreateEditSpacePersonaScreen
+import com.example.ui.spaces.personas.SpacePersonasScreen
 import com.example.ui.theme.MyApplicationTheme
-import com.example.util.NotificationHelper
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
@@ -52,9 +48,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        NotificationHelper.createNotificationChannel(this)
+        // Requested up front even though nothing posts a notification yet -- Spaces
+        // notifications (Phase 5) will need this permission on API 33+.
         requestNotificationPermission()
-        handleIntent(intent)
 
         setContent {
             val userConfig by viewModel.userConfigState.collectAsStateWithLifecycle()
@@ -80,21 +76,6 @@ class MainActivity : ComponentActivity() {
         viewModel.setAppInForeground(false)
     }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        handleIntent(intent)
-    }
-
-    private fun handleIntent(intent: Intent?) {
-        if (intent?.action == NotificationHelper.ACTION_OPEN_CHAT) {
-            val personaId = intent.getLongExtra(NotificationHelper.EXTRA_PERSONA_ID, -1L)
-            if (personaId != -1L) {
-                viewModel.openChatByPersonaId(personaId)
-            }
-        }
-    }
-
     private fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
@@ -112,11 +93,11 @@ class MainActivity : ComponentActivity() {
 fun SoulAppContent(viewModel: MainViewModel) {
     val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
     val canGoBack by viewModel.canGoBack.collectAsStateWithLifecycle()
-    val personas by viewModel.personasState.collectAsStateWithLifecycle()
     val userConfig by viewModel.userConfigState.collectAsStateWithLifecycle()
-    val showCreateSheet by viewModel.showCreateSheet.collectAsStateWithLifecycle()
-    val editingPersona by viewModel.editingPersona.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+    val spaces by viewModel.spacesState.collectAsStateWithLifecycle()
+    val showCreateSpaceSheet by viewModel.showCreateSpaceSheet.collectAsStateWithLifecycle()
+    val isCreatingSpace by viewModel.isCreatingSpace.collectAsStateWithLifecycle()
 
     androidx.activity.compose.BackHandler(enabled = canGoBack) {
         viewModel.navigateBack()
@@ -136,122 +117,103 @@ fun SoulAppContent(viewModel: MainViewModel) {
     ) { screen ->
         when (screen) {
             is Screen.Auth -> {
-                com.example.ui.auth.AuthScreen(
+                AuthScreen(
                     authRepository = viewModel.authRepository,
                     onAuthenticated = { /* no-op: MainViewModel's currentUser collector drives routing */ }
                 )
             }
-            is Screen.Onboarding -> {
-                OnboardingScreen(
-                    soulRepository = viewModel.soulRepository,
-                    onCompleteOnboarding = { userName, userBio, baseUrl, persona ->
-                        viewModel.completeOnboarding(userName, userBio, baseUrl, persona)
-                    }
+            is Screen.SpacesDashboard -> {
+                SpacesDashboardScreen(
+                    spaces = spaces,
+                    onOpenSpace = { space -> viewModel.openSpace(space) },
+                    onCreateSpace = { viewModel.openCreateSpaceSheet() },
+                    onOpenSettings = { viewModel.navigateToSettings() }
                 )
             }
-            is Screen.Personas -> {
-                PersonasScreen(
+            is Screen.SpaceHome -> {
+                val personas by viewModel.observePersonas(screen.space.id).collectAsStateWithLifecycle(initialValue = emptyList())
+                val userCharacter by viewModel.observeUserCharacter(screen.space.id).collectAsStateWithLifecycle(initialValue = null)
+
+                SpaceHomeScreen(
+                    space = screen.space,
+                    userCharacter = userCharacter,
                     personas = personas,
-                    userConfig = userConfig,
-                    onSelectPersonaForChat = { persona -> viewModel.openChatWithPersona(persona) },
-                    onOpenMemoryRecap = { persona -> viewModel.openMemoryRecap(persona) },
-                    onCreateNewPersona = { viewModel.openCreatePersonaSheet(null) },
-                    onEditPersona = { persona -> viewModel.openCreatePersonaSheet(persona) },
-                    onDeletePersona = { persona -> viewModel.deletePersona(persona) },
-                    onOpenSettings = { viewModel.navigateToSettings() },
-                    onStartDualChat = { pA, pB -> viewModel.openDualPersonaChat(pA, pB) },
-                    soulRepository = viewModel.soulRepository
+                    onBack = { viewModel.navigateBack() },
+                    onToggleSim = { viewModel.toggleSimStatus(screen.space) },
+                    onEditUserCharacter = { viewModel.openEditUserCharacter(screen.space) },
+                    onOpenPersonas = { viewModel.openSpacePersonas(screen.space) },
+                    onOpenPersonaChat = { /* wired in Phase 4 (Direct Chat) */ }
                 )
             }
-            is Screen.Chat -> {
-                val messages by viewModel.getMessagesForSession(screen.sessionId)
-                    .collectAsStateWithLifecycle(initialValue = emptyList())
+            is Screen.SpacePersonas -> {
+                val personas by viewModel.observePersonas(screen.space.id).collectAsStateWithLifecycle(initialValue = emptyList())
 
-                ChatScreen(
-                    persona = screen.persona,
-                    sessionId = screen.sessionId,
-                    messages = messages,
-                    onBack = { viewModel.navigateToPersonas() },
-                    onEditPersona = { persona -> viewModel.openCreatePersonaSheet(persona) },
-                    onOpenMemoryRecap = { persona -> viewModel.openMemoryRecap(persona) },
-                    onSendMessage = { msg, onResult ->
-                        viewModel.sendMessage(screen.sessionId, screen.persona, msg, onResult)
-                    },
-                    onRetryMessage = {
-                        viewModel.retryLastMessage(screen.sessionId, screen.persona)
-                    },
-                    onStartDualChat = { pA, pB ->
-                        viewModel.openDualPersonaChat(pA, pB)
-                    },
-                    allPersonas = personas,
-                    soulRepository = viewModel.soulRepository
+                SpacePersonasScreen(
+                    space = screen.space,
+                    personas = personas,
+                    onSelectPersonaForChat = { /* wired in Phase 4 (Direct Chat) */ },
+                    onCreatePersona = { viewModel.openCreateEditSpacePersona(screen.space) },
+                    onEditPersona = { persona -> viewModel.openCreateEditSpacePersona(screen.space, persona) },
+                    onDeletePersona = { persona -> viewModel.deleteSpacePersona(screen.space, persona) },
+                    onBack = { viewModel.navigateBack() }
                 )
             }
-            is Screen.DualPersonaChat -> {
-                val messages by viewModel.getMessagesForSession(screen.sessionId)
-                    .collectAsStateWithLifecycle(initialValue = emptyList())
+            is Screen.CreateEditSpacePersona -> {
+                val personas by viewModel.observePersonas(screen.space.id).collectAsStateWithLifecycle(initialValue = emptyList())
+                val otherPersonas = personas.filter { it.id != screen.personaToEdit?.id }
 
-                DualPersonaChatScreen(
-                    personaA = screen.personaA,
-                    personaB = screen.personaB,
-                    sessionId = screen.sessionId,
-                    messages = messages,
-                    onBack = { viewModel.navigateToPersonas() },
-                    onNextTurn = { onResult ->
-                        viewModel.sendDualPersonaTurn(screen.personaA, screen.personaB, screen.sessionId, onResult)
-                    },
-                    soulRepository = viewModel.soulRepository
+                CreateEditSpacePersonaScreen(
+                    space = screen.space,
+                    existingPersona = screen.personaToEdit,
+                    existingUserCharacter = null,
+                    otherPersonas = otherPersonas,
+                    isUserCharacterMode = false,
+                    onBack = { viewModel.navigateBack() },
+                    onSavePersona = { persona -> viewModel.saveSpacePersona(screen.space, persona) },
+                    onSaveUserCharacter = { /* not used in this mode */ },
+                    onAnalyzePhoto = { imageBase64, mimeType -> viewModel.analyzePersonaPhoto(screen.space, imageBase64, mimeType) }
                 )
             }
-            is Screen.MemoryRecap -> {
-                MemoryRecapScreen(
-                    persona = screen.persona,
-                    soulRepository = viewModel.soulRepository,
-                    onBack = { viewModel.navigateToPersonas() }
+            is Screen.EditUserCharacter -> {
+                val userCharacter by viewModel.observeUserCharacter(screen.space.id).collectAsStateWithLifecycle(initialValue = null)
+
+                CreateEditSpacePersonaScreen(
+                    space = screen.space,
+                    existingPersona = null,
+                    existingUserCharacter = userCharacter,
+                    otherPersonas = emptyList(),
+                    isUserCharacterMode = true,
+                    onBack = { viewModel.navigateBack() },
+                    onSavePersona = { /* not used in this mode */ },
+                    onSaveUserCharacter = { character -> viewModel.saveUserCharacter(screen.space, character) },
+                    onAnalyzePhoto = { imageBase64, mimeType -> viewModel.analyzePersonaPhoto(screen.space, imageBase64, mimeType) }
                 )
             }
             is Screen.Settings -> {
                 SettingsScreen(
                     userConfig = userConfig,
                     soulRepository = viewModel.soulRepository,
-                    onBack = { viewModel.navigateToPersonas() },
-                    onNavigateToLiteLlmServer = { viewModel.navigateToLiteLlmServer() },
-                    onNavigateToChatModel = { viewModel.navigateToChatModel() },
+                    onBack = { viewModel.navigateBack() },
                     onNavigateToSpacesBackendSettings = { viewModel.navigateToSpacesBackendSettings() },
                     currentUserEmail = currentUser?.email,
                     onSignOut = { viewModel.signOut() }
-                )
-            }
-            is Screen.LiteLlmServer -> {
-                LiteLlmServerScreen(
-                    userConfig = userConfig,
-                    soulRepository = viewModel.soulRepository,
-                    onBack = { viewModel.navigateToSettings() }
-                )
-            }
-            is Screen.ChatModel -> {
-                ChatModelScreen(
-                    userConfig = userConfig,
-                    soulRepository = viewModel.soulRepository,
-                    onBack = { viewModel.navigateToSettings() }
                 )
             }
             is Screen.SpacesBackendSettings -> {
                 SpacesBackendSettingsScreen(
                     userConfig = userConfig,
                     soulRepository = viewModel.soulRepository,
-                    onBack = { viewModel.navigateToSettings() }
+                    onBack = { viewModel.navigateBack() }
                 )
             }
         }
     }
 
-    if (showCreateSheet) {
-        CreatePersonaSheet(
-            existingPersona = editingPersona,
-            soulRepository = viewModel.soulRepository,
-            onDismiss = { viewModel.closeCreatePersonaSheet() },
-            onSave = { persona -> viewModel.savePersona(persona) }
+    if (showCreateSpaceSheet) {
+        CreateSpaceSheet(
+            onDismiss = { viewModel.closeCreateSpaceSheet() },
+            onCreate = { name, premise -> viewModel.createSpace(name, premise) },
+            isSaving = isCreatingSpace
         )
     }
 }

@@ -83,4 +83,57 @@ object SpacesApiClient {
                 Result.failure(e)
             }
         }
+
+    /** Sends a photo to the backend's vision-model call, returning auto-detected appearance fields. */
+    suspend fun analyzePersonaPhoto(
+        baseUrl: String,
+        idToken: String,
+        spaceId: String,
+        imageBase64: String,
+        mimeType: String
+    ): Result<AppearanceFieldsDto> = withContext(Dispatchers.IO) {
+        try {
+            val bodyJson = JSONObject().apply {
+                put("imageBase64", imageBase64)
+                put("mimeType", mimeType)
+            }.toString()
+
+            val request = Request.Builder()
+                .url("${sanitizeBaseUrl(baseUrl)}/api/spaces/$spaceId/personas/analyze-photo")
+                .addHeader("Authorization", "Bearer $idToken")
+                .post(bodyJson.toRequestBody(jsonMediaType))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val bodyText = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(IllegalStateException("Photo analysis failed: HTTP ${response.code}"))
+                }
+                val json = JSONObject(bodyText)
+                Result.success(
+                    AppearanceFieldsDto(
+                        hairColor = json.optString("hairColor", ""),
+                        hairStyle = json.optString("hairStyle", ""),
+                        eyeColor = json.optString("eyeColor", ""),
+                        skinTone = json.optString("skinTone", ""),
+                        build = json.optString("build", ""),
+                        height = json.optString("height", ""),
+                        extraFeatures = json.optString("extraFeatures", "")
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
+
+data class AppearanceFieldsDto(
+    val hairColor: String,
+    val hairStyle: String,
+    val eyeColor: String,
+    val skinTone: String,
+    val build: String,
+    val height: String,
+    val extraFeatures: String
+)

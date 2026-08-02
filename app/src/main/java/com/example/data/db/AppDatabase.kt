@@ -5,14 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
-import com.example.data.dao.ChatDao
-import com.example.data.dao.MemoryRecapDao
-import com.example.data.dao.PersonaDao
 import com.example.data.dao.UserConfigDao
-import com.example.data.model.ChatMessageEntity
-import com.example.data.model.ChatSessionEntity
-import com.example.data.model.MemoryRecapEntity
-import com.example.data.model.PersonaEntity
 import com.example.data.model.UserConfigEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,20 +15,13 @@ import androidx.room.migration.Migration
 
 @Database(
     entities = [
-        PersonaEntity::class,
-        UserConfigEntity::class,
-        ChatSessionEntity::class,
-        ChatMessageEntity::class,
-        MemoryRecapEntity::class
+        UserConfigEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
-    abstract fun personaDao(): PersonaDao
     abstract fun userConfigDao(): UserConfigDao
-    abstract fun chatDao(): ChatDao
-    abstract fun memoryRecapDao(): MemoryRecapDao
 
     companion object {
         @Volatile
@@ -107,6 +93,38 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // Legacy single-persona chat feature removed entirely -- the new Firestore-backed
+        // Spaces feature supersedes it. Drop its tables and slim user_config down to what's
+        // still needed (the LLM/onboarding fields it used to carry are gone with it).
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS personas")
+                db.execSQL("DROP TABLE IF EXISTS chat_sessions")
+                db.execSQL("DROP TABLE IF EXISTS chat_messages")
+                db.execSQL("DROP TABLE IF EXISTS memory_recaps")
+
+                db.execSQL(
+                    """
+                    CREATE TABLE user_config_new (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        darkTheme INTEGER NOT NULL,
+                        firebaseUid TEXT,
+                        firebaseEmail TEXT,
+                        spacesApiBaseUrl TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO user_config_new (id, darkTheme, firebaseUid, firebaseEmail, spacesApiBaseUrl)
+                    SELECT id, darkTheme, firebaseUid, firebaseEmail, spacesApiBaseUrl FROM user_config
+                    """.trimIndent()
+                )
+                db.execSQL("DROP TABLE user_config")
+                db.execSQL("ALTER TABLE user_config_new RENAME TO user_config")
+            }
+        }
+
         private val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE personas ADD COLUMN avatarBlob BLOB DEFAULT NULL")
@@ -122,7 +140,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "soul_ai_database"
                 )
-                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                 .fallbackToDestructiveMigrationOnDowngrade()
                 .addCallback(DatabaseCallback())
                 .build()
@@ -145,18 +163,9 @@ abstract class AppDatabase : RoomDatabase() {
         private suspend fun seedDatabase(db: AppDatabase) {
             val userConfigDao = db.userConfigDao()
 
-            // Initialize clean dynamic user configuration
             if (userConfigDao.getUserConfig() == null) {
                 userConfigDao.insertOrUpdateConfig(
-                    UserConfigEntity(
-                        id = 1,
-                        userName = "",
-                        userBio = "",
-                        baseUrl = "",
-                        selectedModel = "",
-                        darkTheme = true,
-                        isOnboardingCompleted = false
-                    )
+                    UserConfigEntity(id = 1, darkTheme = true)
                 )
             }
         }

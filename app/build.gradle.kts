@@ -38,8 +38,22 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        // The project's own debug key (not the machine-global ~/.android/debug.keystore
+        // AGP falls back to otherwise). Its SHA-1 is what's registered as the Android OAuth
+        // client in Firebase for Google Sign-In -- using the wrong debug key here is why
+        // Google Sign-In fails while email/password auth still works fine.
+        getByName("debug") {
+            storeFile = file("${rootDir}/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         getByName("debug") {
+            signingConfig = signingConfigs.getByName("debug")
             // Local dev default: the port-forwarded (dev tunnel) URL. Override per-developer
             // via `LOCAL_BACKEND_URL=...` in local.properties, or per-build via
             // `-PLOCAL_BACKEND_URL=...`, without editing this file.
@@ -110,25 +124,16 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
     implementation(libs.coil.compose)
-    implementation(libs.retrofit)
-    implementation(libs.converter.moshi)
-    implementation(libs.moshi.kotlin)
-    ksp(libs.moshi.kotlin.codegen)
     implementation(libs.okhttp)
-    implementation(libs.logging.interceptor)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
+    implementation(libs.firebase.firestore)
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services)
     implementation(libs.googleid)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.play.services)
-    implementation(libs.accompanist.permissions)
-    implementation(libs.androidx.camera.camera2)
-    implementation(libs.androidx.camera.lifecycle)
-    implementation(libs.androidx.camera.view)
-    implementation(libs.androidx.camera.core)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

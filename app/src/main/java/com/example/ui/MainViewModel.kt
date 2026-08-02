@@ -5,44 +5,34 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.auth.AuthRepository
 import com.example.data.db.AppDatabase
-import com.example.data.model.ChatMessageEntity
-import com.example.data.model.PersonaEntity
 import com.example.data.model.UserConfigEntity
 import com.example.data.repository.SoulRepository
+import com.example.data.spaces.AppearanceFieldsDto
 import com.example.data.spaces.SpacesApiClient
-import com.example.util.NotificationHelper
+import com.example.data.spaces.SpacesRepository
+import com.example.data.spaces.model.SpaceModel
+import com.example.data.spaces.model.SpacePersonaModel
+import com.example.data.spaces.model.UserCharacterModel
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 sealed class Screen {
     object Auth : Screen()
-    object Onboarding : Screen()
-    object Personas : Screen()
-    data class Chat(val persona: PersonaEntity, val sessionId: String) : Screen()
-    data class DualPersonaChat(val personaA: PersonaEntity, val personaB: PersonaEntity, val sessionId: String) : Screen()
-    data class MemoryRecap(val persona: PersonaEntity) : Screen()
     object Settings : Screen()
-    object LiteLlmServer : Screen()
-    object ChatModel : Screen()
     object SpacesBackendSettings : Screen()
+    object SpacesDashboard : Screen()
+    data class SpaceHome(val space: SpaceModel) : Screen()
+    data class SpacePersonas(val space: SpaceModel) : Screen()
+    data class CreateEditSpacePersona(val space: SpaceModel, val personaToEdit: SpacePersonaModel? = null) : Screen()
+    data class EditUserCharacter(val space: SpaceModel) : Screen()
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     val database = AppDatabase.getDatabase(application)
     val soulRepository = SoulRepository(
-        personaDao = database.personaDao(),
-        userConfigDao = database.userConfigDao(),
-        chatDao = database.chatDao(),
-        memoryRecapDao = database.memoryRecapDao()
+        userConfigDao = database.userConfigDao()
     )
-
-    val personasState: StateFlow<List<PersonaEntity>> = soulRepository.allPersonas
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )
 
     val userConfigState: StateFlow<UserConfigEntity?> = soulRepository.userConfigFlow
         .stateIn(
@@ -55,10 +45,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val currentUser: StateFlow<FirebaseUser?> = authRepository.authStateFlow
         .stateIn(viewModelScope, SharingStarted.Eagerly, authRepository.currentUser)
 
+    val spacesRepository = SpacesRepository(authRepository = authRepository)
+    val spacesState: StateFlow<List<SpaceModel>> = currentUser
+        .flatMapLatest { user -> if (user != null) spacesRepository.observeSpaces() else flowOf(emptyList()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     private val _screenStack = MutableStateFlow(listOf<Screen>(Screen.Auth))
     val currentScreen: StateFlow<Screen> = _screenStack
         .map { it.last() }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, Screen.Onboarding)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, Screen.Auth)
     val canGoBack: StateFlow<Boolean> = _screenStack
         .map { it.size > 1 }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
@@ -94,8 +89,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     syncUserWithBackend(user)
                     if (!hasRoutedPostAuth) {
                         hasRoutedPostAuth = true
-                        val config = soulRepository.getUserConfig()
-                        resetTo(if (config.isOnboardingCompleted) Screen.Personas else Screen.Onboarding)
+                        resetTo(Screen.SpacesDashboard)
                     }
                 }
             }
@@ -126,170 +120,105 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         resetTo(Screen.Auth)
     }
 
-    fun completeOnboarding(
-        userName: String,
-        userBio: String,
-        baseUrl: String,
-        firstPersona: PersonaEntity
-    ) {
-        viewModelScope.launch {
-            val currentConfig = soulRepository.getUserConfig()
-            val updatedConfig = currentConfig.copy(
-                userName = userName,
-                userBio = userBio,
-                baseUrl = baseUrl,
-                isOnboardingCompleted = true
-            )
-            soulRepository.saveUserConfig(updatedConfig)
-
-            // Insert first persona
-            val personaId = soulRepository.insertPersona(firstPersona)
-            val savedPersona = firstPersona.copy(id = personaId)
-
-            // Navigate to chat with the first persona, clearing Onboarding from the stack
-            val session = soulRepository.getOrCreateSessionForPersona(savedPersona)
-            resetTo(Screen.Chat(savedPersona, session.sessionId))
-        }
-    }
-
-    private val _editingPersona = MutableStateFlow<PersonaEntity?>(null)
-    val editingPersona: StateFlow<PersonaEntity?> = _editingPersona.asStateFlow()
-
-    private val _showCreateSheet = MutableStateFlow(false)
-    val showCreateSheet: StateFlow<Boolean> = _showCreateSheet.asStateFlow()
-
-    fun navigateToPersonas() {
-        resetTo(Screen.Personas)
-    }
-
     fun navigateToSettings() {
         navigateTo(Screen.Settings)
-    }
-
-    fun navigateToLiteLlmServer() {
-        navigateTo(Screen.LiteLlmServer)
-    }
-
-    fun navigateToChatModel() {
-        navigateTo(Screen.ChatModel)
     }
 
     fun navigateToSpacesBackendSettings() {
         navigateTo(Screen.SpacesBackendSettings)
     }
 
+    // Reserved for a future Spaces-notification feature that needs to suppress/allow local
+    // notifications depending on whether the app is currently foregrounded.
     private var isAppInForeground = true
 
     fun setAppInForeground(inForeground: Boolean) {
         isAppInForeground = inForeground
     }
 
-    fun openChatWithPersona(persona: PersonaEntity) {
-        viewModelScope.launch {
-            val session = soulRepository.getOrCreateSessionForPersona(persona)
-            navigateTo(Screen.Chat(persona, session.sessionId))
-        }
+    // --- Spaces ---
+
+    private val _showCreateSpaceSheet = MutableStateFlow(false)
+    val showCreateSpaceSheet: StateFlow<Boolean> = _showCreateSpaceSheet.asStateFlow()
+
+    private val _isCreatingSpace = MutableStateFlow(false)
+    val isCreatingSpace: StateFlow<Boolean> = _isCreatingSpace.asStateFlow()
+
+    fun openCreateSpaceSheet() {
+        _showCreateSpaceSheet.value = true
     }
 
-    fun openChatByPersonaId(personaId: Long) {
+    fun closeCreateSpaceSheet() {
+        _showCreateSpaceSheet.value = false
+    }
+
+    fun createSpace(name: String, premise: String) {
+        if (name.isBlank()) return
         viewModelScope.launch {
-            val persona = soulRepository.getPersonaById(personaId)
-            if (persona != null) {
-                openChatWithPersona(persona)
+            _isCreatingSpace.value = true
+            try {
+                spacesRepository.createSpace(name, premise)
+                _showCreateSpaceSheet.value = false
+            } finally {
+                _isCreatingSpace.value = false
             }
         }
     }
 
-    fun sendMessage(
-        sessionId: String,
-        persona: PersonaEntity,
-        userText: String,
-        onComplete: ((Result<String>) -> Unit)? = null
-    ) {
+    fun openSpace(space: SpaceModel) {
+        navigateTo(Screen.SpaceHome(space))
+    }
+
+    fun openSpacePersonas(space: SpaceModel) {
+        navigateTo(Screen.SpacePersonas(space))
+    }
+
+    fun openCreateEditSpacePersona(space: SpaceModel, persona: SpacePersonaModel? = null) {
+        navigateTo(Screen.CreateEditSpacePersona(space, persona))
+    }
+
+    fun openEditUserCharacter(space: SpaceModel) {
+        navigateTo(Screen.EditUserCharacter(space))
+    }
+
+    fun saveSpacePersona(space: SpaceModel, persona: SpacePersonaModel) {
         viewModelScope.launch {
-            val result = soulRepository.sendMessage(sessionId, persona, userText)
-            onComplete?.invoke(result)
-
-            if (result.isSuccess) {
-                val replyText = result.getOrNull()
-                if (!replyText.isNullOrBlank()) {
-                    val activeScreen = currentScreen.value
-                    val isUserOnThisChat = activeScreen is Screen.Chat && activeScreen.persona.id == persona.id
-
-                    if (!isAppInForeground || !isUserOnThisChat) {
-                        NotificationHelper.postPersonaReplyNotification(
-                            context = getApplication(),
-                            persona = persona,
-                            replyText = replyText
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    fun retryLastMessage(
-        sessionId: String,
-        persona: PersonaEntity,
-        onComplete: ((Result<String>) -> Unit)? = null
-    ) {
-        viewModelScope.launch {
-            val result = soulRepository.retryLastMessage(sessionId, persona)
-            onComplete?.invoke(result)
-        }
-    }
-
-    fun openDualPersonaChat(personaA: PersonaEntity, personaB: PersonaEntity) {
-        viewModelScope.launch {
-            val session = soulRepository.getOrCreateDualSession(personaA, personaB)
-            navigateTo(Screen.DualPersonaChat(personaA, personaB, session.sessionId))
-        }
-    }
-
-    fun sendDualPersonaTurn(
-        personaA: PersonaEntity,
-        personaB: PersonaEntity,
-        sessionId: String,
-        onComplete: ((Result<String>) -> Unit)? = null
-    ) {
-        viewModelScope.launch {
-            val result = soulRepository.sendDualPersonaTurn(personaA, personaB, sessionId)
-            onComplete?.invoke(result)
-        }
-    }
-
-    fun openMemoryRecap(persona: PersonaEntity) {
-        navigateTo(Screen.MemoryRecap(persona))
-    }
-
-    fun getMessagesForSession(sessionId: String): Flow<List<ChatMessageEntity>> {
-        return soulRepository.getMessagesForSession(sessionId)
-    }
-
-    fun openCreatePersonaSheet(personaToEdit: PersonaEntity? = null) {
-        _editingPersona.value = personaToEdit
-        _showCreateSheet.value = true
-    }
-
-    fun closeCreatePersonaSheet() {
-        _showCreateSheet.value = false
-        _editingPersona.value = null
-    }
-
-    fun savePersona(persona: PersonaEntity) {
-        viewModelScope.launch {
-            if (persona.id == 0L) {
-                soulRepository.insertPersona(persona)
+            if (persona.id.isBlank()) {
+                spacesRepository.createPersona(space.id, persona)
             } else {
-                soulRepository.updatePersona(persona)
+                spacesRepository.updatePersona(space.id, persona.id, persona)
             }
-            closeCreatePersonaSheet()
+            navigateBack()
         }
     }
 
-    fun deletePersona(persona: PersonaEntity) {
+    fun deleteSpacePersona(space: SpaceModel, persona: SpacePersonaModel) {
         viewModelScope.launch {
-            soulRepository.deletePersona(persona)
+            spacesRepository.deletePersona(space.id, persona.id)
         }
+    }
+
+    fun saveUserCharacter(space: SpaceModel, character: UserCharacterModel) {
+        viewModelScope.launch {
+            spacesRepository.saveUserCharacter(space.id, character)
+            navigateBack()
+        }
+    }
+
+    fun toggleSimStatus(space: SpaceModel) {
+        viewModelScope.launch {
+            spacesRepository.setSimStatus(space.id, running = space.simStatus != "running")
+        }
+    }
+
+    fun observePersonas(spaceId: String): Flow<List<SpacePersonaModel>> = spacesRepository.observePersonas(spaceId)
+
+    fun observeUserCharacter(spaceId: String): Flow<UserCharacterModel?> = spacesRepository.observeUserCharacter(spaceId)
+
+    suspend fun analyzePersonaPhoto(space: SpaceModel, imageBase64: String, mimeType: String): Result<AppearanceFieldsDto> {
+        val baseUrl = SpacesApiClient.effectiveBaseUrl(soulRepository.getUserConfig().spacesApiBaseUrl)
+        val idToken = authRepository.getIdToken()
+            ?: return Result.failure(IllegalStateException("Not signed in"))
+        return SpacesApiClient.analyzePersonaPhoto(baseUrl, idToken, space.id, imageBase64, mimeType)
     }
 }

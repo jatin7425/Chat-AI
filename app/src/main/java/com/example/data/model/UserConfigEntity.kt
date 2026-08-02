@@ -6,12 +6,7 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "user_config")
 data class UserConfigEntity(
     @PrimaryKey val id: Int = 1,
-    val userName: String = "",
-    val userBio: String = "",
-    val baseUrl: String = "",
-    val selectedModel: String = "nvidia",
     val darkTheme: Boolean = true,
-    val isOnboardingCompleted: Boolean = false,
     val firebaseUid: String? = null,
     val firebaseEmail: String? = null,
     val spacesApiBaseUrl: String = ""
