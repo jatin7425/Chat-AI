@@ -1,5 +1,6 @@
 package com.example.ui.spaces.dashboard
 
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -8,13 +9,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Diamond
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -30,8 +33,21 @@ fun SpacesDashboardScreen(
     onOpenSpace: (SpaceModel) -> Unit,
     onCreateSpace: () -> Unit,
     onOpenSettings: () -> Unit,
+    onDeleteSpace: (SpaceModel) -> Unit = {},
+    deleteError: String? = null,
+    onDismissDeleteError: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    var spacePendingDelete by remember { mutableStateOf<SpaceModel?>(null) }
+
+    LaunchedEffect(deleteError) {
+        if (deleteError != null) {
+            Toast.makeText(context, deleteError, Toast.LENGTH_LONG).show()
+            onDismissDeleteError()
+        }
+    }
+
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -122,15 +138,42 @@ fun SpacesDashboardScreen(
                 contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp)
             ) {
                 items(spaces, key = { it.id }) { space ->
-                    SpaceCard(space = space, onClick = { onOpenSpace(space) })
+                    SpaceCard(
+                        space = space,
+                        onClick = { onOpenSpace(space) },
+                        onDeleteClick = { spacePendingDelete = space }
+                    )
                 }
             }
         }
     }
+
+    val toDelete = spacePendingDelete
+    if (toDelete != null) {
+        AlertDialog(
+            onDismissRequest = { spacePendingDelete = null },
+            title = { Text("Delete \"${toDelete.name}\"?", fontWeight = FontWeight.Bold) },
+            text = { Text("This permanently deletes the space and everyone in it. This can't be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDeleteSpace(toDelete)
+                    spacePendingDelete = null
+                }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { spacePendingDelete = null }) {
+                    Text("Cancel")
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    }
 }
 
 @Composable
-private fun SpaceCard(space: SpaceModel, onClick: () -> Unit) {
+private fun SpaceCard(space: SpaceModel, onClick: () -> Unit, onDeleteClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -181,6 +224,15 @@ private fun SpaceCard(space: SpaceModel, onClick: () -> Unit) {
                     text = "${space.personaCount} persona${if (space.personaCount == 1) "" else "s"}",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp
+                )
+            }
+
+            IconButton(onClick = onDeleteClick, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Delete Space",
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(18.dp)
                 )
             }
 

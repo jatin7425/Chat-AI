@@ -1,12 +1,15 @@
 package com.example.data.spaces
 
+import android.util.Log
 import com.example.data.auth.AuthRepository
+import com.example.data.spaces.model.LlmConfigModel
 import com.example.data.spaces.model.SpaceModel
 import com.example.data.spaces.model.SpacePersonaModel
 import com.example.data.spaces.model.UserCharacterModel
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -26,6 +29,7 @@ class SpacesRepository(
     private fun requireUid(): String =
         authRepository.currentUser?.uid ?: throw IllegalStateException("Not signed in")
 
+    private fun usersCollection() = firestore.collection("users")
     private fun spacesCollection() = firestore.collection("spaces")
     private fun personasCollection(spaceId: String) = spacesCollection().document(spaceId).collection("personas")
     private fun userCharacterDoc(spaceId: String) =
@@ -38,7 +42,11 @@ class SpacesRepository(
             .orderBy("updatedAt", Query.Direction.DESCENDING)
         val registration = query.addSnapshotListener { snapshot, error ->
             if (error != null) {
-                trySend(emptyList())
+                // Firestore's watch stream reconnects periodically and can surface transient
+                // errors (network blips, index-still-building, etc.) on an otherwise-healthy
+                // listener. Log and keep the last good value on screen rather than wiping it --
+                // clearing to empty here was making a correctly-rendered list flicker away.
+                Log.w("SpacesRepository", "observeSpaces listener error", error)
                 return@addSnapshotListener
             }
             val spaces = snapshot?.documents?.mapNotNull { doc ->
@@ -81,7 +89,7 @@ class SpacesRepository(
     fun observePersonas(spaceId: String): Flow<List<SpacePersonaModel>> = callbackFlow {
         val registration = personasCollection(spaceId).addSnapshotListener { snapshot, error ->
             if (error != null) {
-                trySend(emptyList())
+                Log.w("SpacesRepository", "observePersonas listener error", error)
                 return@addSnapshotListener
             }
             val personas = snapshot?.documents?.mapNotNull { doc ->
@@ -95,7 +103,11 @@ class SpacesRepository(
     fun observePersona(spaceId: String, personaId: String): Flow<SpacePersonaModel?> = callbackFlow {
         val registration = personasCollection(spaceId).document(personaId)
             .addSnapshotListener { snapshot, error ->
-                if (error != null || snapshot == null || !snapshot.exists()) {
+                if (error != null) {
+                    Log.w("SpacesRepository", "observePersona listener error", error)
+                    return@addSnapshotListener
+                }
+                if (snapshot == null || !snapshot.exists()) {
                     trySend(null)
                     return@addSnapshotListener
                 }
@@ -139,7 +151,11 @@ class SpacesRepository(
 
     fun observeUserCharacter(spaceId: String): Flow<UserCharacterModel?> = callbackFlow {
         val registration = userCharacterDoc(spaceId).addSnapshotListener { snapshot, error ->
-            if (error != null || snapshot == null || !snapshot.exists()) {
+            if (error != null) {
+                Log.w("SpacesRepository", "observeUserCharacter listener error", error)
+                return@addSnapshotListener
+            }
+            if (snapshot == null || !snapshot.exists()) {
                 trySend(null)
                 return@addSnapshotListener
             }
@@ -151,5 +167,35 @@ class SpacesRepository(
     suspend fun saveUserCharacter(spaceId: String, character: UserCharacterModel) {
         val toSave = character.copy(updatedAt = System.currentTimeMillis())
         userCharacterDoc(spaceId).set(toSave).await()
+    }
+
+    /**
+     * The user's LiteLLM connection lives on users/{uid} alongside fields the backend itself
+     * owns (email, displayName, fcmTokens, ...). Read/write only these two fields -- never the
+     * whole document -- so this repository can't clobber backend-written data.
+     */
+    fun observeLlmConfig(): Flow<LlmConfigModel> = callbackFlow {
+        val uid = requireUid()
+        val registration = usersCollection().document(uid).addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                Log.w("SpacesRepository", "observeLlmConfig listener error", error)
+                return@addSnapshotListener
+            }
+            trySend(
+                LlmConfigModel(
+                    llmBaseUrl = snapshot?.getString("llmBaseUrl") ?: "",
+                    llmModel = snapshot?.getString("llmModel") ?: ""
+                )
+            )
+        }
+        awaitClose { registration.remove() }
+    }
+
+    suspend fun saveLlmConfig(baseUrl: String, model: String) {
+        val uid = requireUid()
+        usersCollection().document(uid).set(
+            mapOf("llmBaseUrl" to baseUrl, "llmModel" to model, "updatedAt" to System.currentTimeMillis()),
+            SetOptions.merge()
+        ).await()
     }
 }

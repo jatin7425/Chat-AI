@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.UserConfigEntity
 import com.example.data.repository.SoulRepository
 import com.example.data.spaces.SpacesApiClient
+import com.example.data.spaces.model.LlmConfigModel
 import com.example.ui.theme.customTextFieldColors
 import kotlinx.coroutines.launch
 
@@ -34,6 +35,9 @@ fun SettingsScreen(
     soulRepository: SoulRepository,
     onBack: () -> Unit,
     onNavigateToSpacesBackendSettings: () -> Unit = {},
+    onNavigateToLiteLlmServer: () -> Unit = {},
+    onNavigateToChatModel: () -> Unit = {},
+    llmConfig: LlmConfigModel = LlmConfigModel(),
     currentUserEmail: String? = null,
     onSignOut: () -> Unit = {}
 ) {
@@ -100,6 +104,20 @@ fun SettingsScreen(
                 subtitle = SpacesApiClient.effectiveBaseUrl(userConfig?.spacesApiBaseUrl ?: "").ifBlank { "Not configured" },
                 onClick = onNavigateToSpacesBackendSettings,
                 testTag = "settings_backend_server_item"
+            )
+
+            SettingsMenuCard(
+                title = "LiteLLM Server",
+                subtitle = llmConfig.llmBaseUrl.ifBlank { "Not configured" },
+                onClick = onNavigateToLiteLlmServer,
+                testTag = "settings_litellm_server_item"
+            )
+
+            SettingsMenuCard(
+                title = "Default Model",
+                subtitle = llmConfig.llmModel.ifBlank { "Not selected" },
+                onClick = onNavigateToChatModel,
+                testTag = "settings_default_model_item"
             )
 
             Card(

@@ -84,6 +84,28 @@ object SpacesApiClient {
             }
         }
 
+    /** Deletes a space and all its subcollections via the backend's Admin-SDK recursiveDelete -- firestore.rules denies client-side space deletes entirely. */
+    suspend fun deleteSpace(baseUrl: String, idToken: String, spaceId: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            try {
+                val request = Request.Builder()
+                    .url("${sanitizeBaseUrl(baseUrl)}/api/spaces/$spaceId")
+                    .addHeader("Authorization", "Bearer $idToken")
+                    .delete()
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        Result.success(Unit)
+                    } else {
+                        Result.failure(IllegalStateException("Delete space failed: HTTP ${response.code}"))
+                    }
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
     /** Sends a photo to the backend's vision-model call, returning auto-detected appearance fields. */
     suspend fun analyzePersonaPhoto(
         baseUrl: String,

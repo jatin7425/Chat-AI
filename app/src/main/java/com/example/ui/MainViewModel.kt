@@ -8,8 +8,10 @@ import com.example.data.db.AppDatabase
 import com.example.data.model.UserConfigEntity
 import com.example.data.repository.SoulRepository
 import com.example.data.spaces.AppearanceFieldsDto
+import com.example.data.spaces.LiteLlmDirectClient
 import com.example.data.spaces.SpacesApiClient
 import com.example.data.spaces.SpacesRepository
+import com.example.data.spaces.model.LlmConfigModel
 import com.example.data.spaces.model.SpaceModel
 import com.example.data.spaces.model.SpacePersonaModel
 import com.example.data.spaces.model.UserCharacterModel
@@ -21,6 +23,8 @@ sealed class Screen {
     object Auth : Screen()
     object Settings : Screen()
     object SpacesBackendSettings : Screen()
+    object LiteLlmServer : Screen()
+    object ChatModel : Screen()
     object SpacesDashboard : Screen()
     data class SpaceHome(val space: SpaceModel) : Screen()
     data class SpacePersonas(val space: SpaceModel) : Screen()
@@ -128,6 +132,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         navigateTo(Screen.SpacesBackendSettings)
     }
 
+    fun navigateToLiteLlmServer() {
+        navigateTo(Screen.LiteLlmServer)
+    }
+
+    fun navigateToChatModel() {
+        navigateTo(Screen.ChatModel)
+    }
+
+    // The LiteLLM connection the user provides -- persisted to Firestore users/{uid} (not
+    // Room) since the backend, not the mobile client, is what calls this server to generate
+    // persona replies (Phase 4).
+    val llmConfigState: StateFlow<LlmConfigModel> = currentUser
+        .flatMapLatest { user -> if (user != null) spacesRepository.observeLlmConfig() else flowOf(LlmConfigModel()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LlmConfigModel())
+
+    fun saveLlmBaseUrl(baseUrl: String, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            spacesRepository.saveLlmConfig(baseUrl = baseUrl, model = llmConfigState.value.llmModel)
+            onDone()
+        }
+    }
+
+    fun saveLlmModel(model: String, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            spacesRepository.saveLlmConfig(baseUrl = llmConfigState.value.llmBaseUrl, model = model)
+            onDone()
+        }
+    }
+
+    suspend fun fetchLlmModels(baseUrl: String): Result<List<String>> = LiteLlmDirectClient.fetchModels(baseUrl)
+
     // Reserved for a future Spaces-notification feature that needs to suppress/allow local
     // notifications depending on whether the app is currently foregrounded.
     private var isAppInForeground = true
@@ -208,6 +243,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleSimStatus(space: SpaceModel) {
         viewModelScope.launch {
             spacesRepository.setSimStatus(space.id, running = space.simStatus != "running")
+        }
+    }
+
+    private val _spaceActionError = MutableStateFlow<String?>(null)
+    val spaceActionError: StateFlow<String?> = _spaceActionError.asStateFlow()
+
+    fun clearSpaceActionError() {
+        _spaceActionError.value = null
+    }
+
+    /** Space deletion goes through the backend (Admin SDK recursiveDelete) -- firestore.rules denies it client-side entirely, since Firestore has no cascade delete for a Space's several subcollections. */
+    fun deleteSpace(space: SpaceModel) {
+        viewModelScope.launch {
+            val baseUrl = SpacesApiClient.effectiveBaseUrl(soulRepository.getUserConfig().spacesApiBaseUrl)
+            val idToken = authRepository.getIdToken()
+            if (idToken == null) {
+                _spaceActionError.value = "Not signed in."
+                return@launch
+            }
+            SpacesApiClient.deleteSpace(baseUrl, idToken, space.id)
+                .onFailure { _spaceActionError.value = it.localizedMessage ?: "Couldn't delete that space." }
         }
     }
 

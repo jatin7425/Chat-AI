@@ -54,3 +54,14 @@ data class UserCharacterModel(
     val appearance: AppearanceModel = AppearanceModel(),
     val updatedAt: Long = 0L
 )
+
+/**
+ * The user-provided LiteLLM connection: a base URL (their own LiteLLM proxy / self-hosted
+ * OpenAI-compatible server) and the model to use. Lives on users/{uid} in Firestore -- not
+ * Room -- because the backend (not the mobile client) is what actually calls the LLM when
+ * generating persona replies, so it needs to be readable server-side per-user.
+ */
+data class LlmConfigModel(
+    val llmBaseUrl: String = "",
+    val llmModel: String = ""
+)

@@ -28,6 +28,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.MainViewModel
 import com.example.ui.Screen
 import com.example.ui.auth.AuthScreen
+import com.example.ui.settings.ChatModelScreen
+import com.example.ui.settings.LiteLlmServerScreen
 import com.example.ui.settings.SettingsScreen
 import com.example.ui.settings.SpacesBackendSettingsScreen
 import com.example.ui.spaces.dashboard.CreateSpaceSheet
@@ -98,6 +100,8 @@ fun SoulAppContent(viewModel: MainViewModel) {
     val spaces by viewModel.spacesState.collectAsStateWithLifecycle()
     val showCreateSpaceSheet by viewModel.showCreateSpaceSheet.collectAsStateWithLifecycle()
     val isCreatingSpace by viewModel.isCreatingSpace.collectAsStateWithLifecycle()
+    val spaceActionError by viewModel.spaceActionError.collectAsStateWithLifecycle()
+    val llmConfig by viewModel.llmConfigState.collectAsStateWithLifecycle()
 
     androidx.activity.compose.BackHandler(enabled = canGoBack) {
         viewModel.navigateBack()
@@ -127,7 +131,10 @@ fun SoulAppContent(viewModel: MainViewModel) {
                     spaces = spaces,
                     onOpenSpace = { space -> viewModel.openSpace(space) },
                     onCreateSpace = { viewModel.openCreateSpaceSheet() },
-                    onOpenSettings = { viewModel.navigateToSettings() }
+                    onOpenSettings = { viewModel.navigateToSettings() },
+                    onDeleteSpace = { space -> viewModel.deleteSpace(space) },
+                    deleteError = spaceActionError,
+                    onDismissDeleteError = { viewModel.clearSpaceActionError() }
                 )
             }
             is Screen.SpaceHome -> {
@@ -195,6 +202,9 @@ fun SoulAppContent(viewModel: MainViewModel) {
                     soulRepository = viewModel.soulRepository,
                     onBack = { viewModel.navigateBack() },
                     onNavigateToSpacesBackendSettings = { viewModel.navigateToSpacesBackendSettings() },
+                    onNavigateToLiteLlmServer = { viewModel.navigateToLiteLlmServer() },
+                    onNavigateToChatModel = { viewModel.navigateToChatModel() },
+                    llmConfig = llmConfig,
                     currentUserEmail = currentUser?.email,
                     onSignOut = { viewModel.signOut() }
                 )
@@ -203,6 +213,22 @@ fun SoulAppContent(viewModel: MainViewModel) {
                 SpacesBackendSettingsScreen(
                     userConfig = userConfig,
                     soulRepository = viewModel.soulRepository,
+                    onBack = { viewModel.navigateBack() }
+                )
+            }
+            is Screen.LiteLlmServer -> {
+                LiteLlmServerScreen(
+                    llmConfig = llmConfig,
+                    onTestConnection = { baseUrl -> viewModel.fetchLlmModels(baseUrl) },
+                    onSave = { baseUrl, onDone -> viewModel.saveLlmBaseUrl(baseUrl, onDone) },
+                    onBack = { viewModel.navigateBack() }
+                )
+            }
+            is Screen.ChatModel -> {
+                ChatModelScreen(
+                    llmConfig = llmConfig,
+                    onFetchModels = { baseUrl -> viewModel.fetchLlmModels(baseUrl) },
+                    onSaveModel = { model, onDone -> viewModel.saveLlmModel(model, onDone) },
                     onBack = { viewModel.navigateBack() }
                 )
             }
