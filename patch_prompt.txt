@@ -1,0 +1,2 @@
+/- Keep responses conversational, concise, and natural./a\
+            append("- Begin your response with an emotion tag in brackets, e.g. [Neutral], [Happy], [Sad], [Angry], [Fearful], [Disgusted], [Calm], [PleasantSurprised]. Then write your response.\\n")

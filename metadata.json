@@ -1,0 +1,6 @@
+{
+  "name": "SoulAI Emotional Support",
+  "description": "Persona-based AI chatbots providing emotional support, advice, and personalized AI companion creation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
