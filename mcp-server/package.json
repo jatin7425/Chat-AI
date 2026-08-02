@@ -4,8 +4,7 @@
   "private": true,
   "description": "Remote MCP server + OAuth 2.1 authorization server exposing Spaces (read + create) to external AI clients (Claude, ChatGPT, Grok, ...).",
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.json"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
