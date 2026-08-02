@@ -21,6 +21,24 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      # GitHub-hosted runners already have the Android SDK preinstalled; this step only
+      # exists for local `act` runs (act sets env.ACT=true) against the generic Ubuntu
+      # image, which has no Android SDK at all. Only bootstraps platform-tools + accepts
+      # licenses -- AGP downloads the specific build-tools/platform version it needs on
+      # its own once a valid (even partial) SDK root with accepted licenses exists.
+      - name: Set up Android SDK (act only)
+        if: ${{ env.ACT }}
+        run: |
+          export ANDROID_HOME="$HOME/android-sdk"
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          curl -sSL -o /tmp/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q /tmp/cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools"
+          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" > /dev/null
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
