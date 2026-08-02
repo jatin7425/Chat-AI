@@ -3,6 +3,7 @@ import multer from "multer";
 import { config } from "../config";
 import { requireAuth } from "../middleware/authMiddleware";
 import { analyzeAppearance } from "../llm/visionClient";
+import { syncSpaceRelationships } from "../orchestrator/relationshipSync";
 import { assertOwnership, ForbiddenError, NotFoundError } from "../services/spacesService";
 import { uploadImage } from "../services/r2Service";
 import { getUserLlmConfig } from "../services/usersService";
@@ -49,6 +50,34 @@ personasRouter.post("/spaces/:spaceId/personas/:personaId/move", requireAuth, as
       return;
     }
     res.status(500).json({ error: err instanceof Error ? err.message : "Move failed" });
+  }
+});
+
+/**
+ * Refreshes every persona-to-persona relationship label in a Space (relationshipsToOtherPersonas
+ * on each persona's profile) to reflect how they currently feel about each other, based on the
+ * emotions that have accumulated from their actual interactions -- lets relationships evolve
+ * instead of staying frozen at whatever was typed in at persona-creation time.
+ */
+personasRouter.post("/spaces/:spaceId/personas/sync-relationships", requireAuth, async (req, res) => {
+  const { spaceId } = req.params;
+  const uid = res.locals.uid as string;
+
+  try {
+    await assertOwnership(spaceId, uid);
+    const llmConfig = await getUserLlmConfig(uid);
+    const result = await syncSpaceRelationships(spaceId, llmConfig);
+    res.json(result);
+  } catch (err) {
+    if (err instanceof NotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof ForbiddenError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    res.status(500).json({ error: err instanceof Error ? err.message : "Relationship sync failed" });
   }
 });
 

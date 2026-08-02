@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.SentimentDissatisfied
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,6 +37,8 @@ fun SpacePersonasScreen(
     onViewProfile: (SpacePersonaModel) -> Unit,
     onViewMood: (SpacePersonaModel) -> Unit,
     onBack: () -> Unit,
+    onSyncRelationships: () -> Unit = {},
+    isSyncingRelationships: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Scaffold(
@@ -63,6 +66,21 @@ fun SpacePersonasScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onBackground)
+                    }
+                },
+                actions = {
+                    if (personas.size >= 2) {
+                        IconButton(onClick = onSyncRelationships, enabled = !isSyncingRelationships) {
+                            if (isSyncingRelationships) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(
+                                    Icons.Default.Sync,
+                                    contentDescription = "Sync persona relationships",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)

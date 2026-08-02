@@ -627,3 +627,15 @@ export async function updatePersonaEmotionsTowardPersona(
     .doc(personaId)
     .update({ [`emotionsTowardPersonas.${targetPersonaId}`]: emotions, updatedAt: Date.now() });
 }
+
+/** Updates one direction of a persona-to-persona relationship label (see orchestrator/relationshipSync.ts) -- the mobile app's persona editor writes this same field manually at creation time; this lets it evolve automatically as personas actually interact. */
+export async function updatePersonaRelationship(
+  spaceId: string,
+  personaId: string,
+  targetPersonaId: string,
+  relationship: string
+): Promise<void> {
+  await personasCollection(spaceId)
+    .doc(personaId)
+    .update({ [`relationshipsToOtherPersonas.${targetPersonaId}`]: relationship, updatedAt: Date.now() });
+}

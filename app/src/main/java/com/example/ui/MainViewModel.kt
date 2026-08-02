@@ -300,6 +300,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         navigateTo(Screen.SpacePersonas(space))
     }
 
+    private val _syncingRelationshipsSpaceIds = MutableStateFlow<Set<String>>(emptySet())
+    val syncingRelationshipsSpaceIds: StateFlow<Set<String>> = _syncingRelationshipsSpaceIds.asStateFlow()
+
+    fun syncRelationships(space: SpaceModel) {
+        viewModelScope.launch {
+            _syncingRelationshipsSpaceIds.update { it + space.id }
+            try {
+                val baseUrl = SpacesApiClient.effectiveBaseUrl(soulRepository.getUserConfig().spacesApiBaseUrl)
+                val idToken = authRepository.getIdToken()
+                if (idToken == null) {
+                    _spaceActionError.value = "Not signed in."
+                    return@launch
+                }
+                SpacesApiClient.syncRelationships(baseUrl, idToken, space.id)
+                    .onFailure { _spaceActionError.value = it.localizedMessage ?: "Couldn't sync relationships." }
+            } finally {
+                _syncingRelationshipsSpaceIds.update { it - space.id }
+            }
+        }
+    }
+
     fun openCreateEditSpacePersona(space: SpaceModel, persona: SpacePersonaModel? = null, prefillName: String = "") {
         navigateTo(Screen.CreateEditSpacePersona(space, persona, prefillName))
     }

@@ -3,11 +3,13 @@ package com.example.ui.spaces.personas
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,6 +35,7 @@ import com.example.data.spaces.model.PlaceModel
 import com.example.data.spaces.model.SpaceModel
 import com.example.data.spaces.model.SpacePersonaModel
 import com.example.data.spaces.model.UserCharacterModel
+import com.example.ui.components.ImageViewerDialog
 import com.example.ui.theme.customTextFieldColors
 import com.example.util.AgeUtil
 import com.example.util.compressImageToJpegBytes
@@ -108,7 +111,7 @@ fun CreateEditSpacePersonaScreen(
     }
     var isUploadingPortfolio by remember { mutableStateOf(false) }
     var portfolioError by remember { mutableStateOf<String?>(null) }
-    var selectedPortfolioImage by remember { mutableStateOf<String?>(null) }
+    var viewerIndex by remember { mutableStateOf<Int?>(null) }
 
     fun addToPortfolio(url: String) {
         if (url.isNotBlank() && !portfolioImageUrls.contains(url)) portfolioImageUrls.add(url)
@@ -408,13 +411,13 @@ fun CreateEditSpacePersonaScreen(
                         modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
                     )
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(portfolioImageUrls) { url ->
+                        itemsIndexed(portfolioImageUrls) { index, url ->
                             Box(
                                 modifier = Modifier
                                     .size(80.dp)
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(MaterialTheme.colorScheme.surfaceVariant)
-                                    .clickable { selectedPortfolioImage = url }
+                                    .clickable { viewerIndex = index }
                             ) {
                                 AsyncImage(
                                     model = url,
@@ -464,45 +467,48 @@ fun CreateEditSpacePersonaScreen(
                 }
             }
 
-            if (selectedPortfolioImage != null) {
-                val url = selectedPortfolioImage!!
-                AlertDialog(
-                    onDismissRequest = { selectedPortfolioImage = null },
-                    title = { Text("Use this photo") },
-                    text = {
-                        Column {
-                            AsyncImage(
-                                model = url,
-                                contentDescription = "Selected portfolio photo",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(160.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            TextButton(
-                                onClick = { avatarImageUrl = url; selectedPortfolioImage = null },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("Set as profile photo") }
-                            TextButton(
-                                onClick = { chatBackgroundImageUrl = url; selectedPortfolioImage = null },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("Set as background") }
-                            TextButton(
+            if (viewerIndex != null) {
+                ImageViewerDialog(
+                    images = portfolioImageUrls,
+                    initialIndex = viewerIndex!!,
+                    onDismiss = { viewerIndex = null },
+                    actions = { url ->
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.Black.copy(alpha = 0.5f))
+                                .padding(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { avatarImageUrl = url },
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.6f)),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Profile photo", fontSize = 11.sp) }
+                            OutlinedButton(
+                                onClick = { chatBackgroundImageUrl = url },
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.6f)),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Background", fontSize = 11.sp) }
+                            OutlinedButton(
                                 onClick = {
+                                    val removedIndex = portfolioImageUrls.indexOf(url)
                                     portfolioImageUrls.remove(url)
                                     if (avatarImageUrl == url) avatarImageUrl = ""
                                     if (chatBackgroundImageUrl == url) chatBackgroundImageUrl = ""
-                                    selectedPortfolioImage = null
+                                    viewerIndex = when {
+                                        portfolioImageUrls.isEmpty() -> null
+                                        removedIndex >= portfolioImageUrls.size -> portfolioImageUrls.size - 1
+                                        else -> removedIndex
+                                    }
                                 },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(onClick = { selectedPortfolioImage = null }) {
-                            Text("Cancel")
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.6f)),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Delete", fontSize = 11.sp) }
                         }
                     }
                 )

@@ -214,6 +214,7 @@ fun SoulAppContent(viewModel: MainViewModel) {
             }
             is Screen.SpacePersonas -> {
                 val personas by viewModel.observePersonas(screen.space.id).collectAsStateWithLifecycle(initialValue = emptyList())
+                val syncingRelationshipsSpaceIds by viewModel.syncingRelationshipsSpaceIds.collectAsStateWithLifecycle()
 
                 SpacePersonasScreen(
                     space = screen.space,
@@ -224,7 +225,9 @@ fun SoulAppContent(viewModel: MainViewModel) {
                     onDeletePersona = { persona -> viewModel.deleteSpacePersona(screen.space, persona) },
                     onViewProfile = { persona -> viewModel.openPersonaProfile(screen.space, persona) },
                     onViewMood = { persona -> viewModel.openPersonaMood(screen.space, persona) },
-                    onBack = { viewModel.navigateBack() }
+                    onBack = { viewModel.navigateBack() },
+                    onSyncRelationships = { viewModel.syncRelationships(screen.space) },
+                    isSyncingRelationships = syncingRelationshipsSpaceIds.contains(screen.space.id)
                 )
             }
             is Screen.CreateEditSpacePersona -> {

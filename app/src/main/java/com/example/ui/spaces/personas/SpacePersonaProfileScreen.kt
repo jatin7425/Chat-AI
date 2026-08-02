@@ -2,9 +2,11 @@ package com.example.ui.spaces.personas
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -31,6 +33,7 @@ import com.example.data.spaces.model.SpacePersonaModel
 import com.example.data.spaces.model.StoryFeedTaskModel
 import com.example.data.spaces.model.UserCharacterModel
 import com.example.ui.components.AvatarView
+import com.example.ui.components.ImageViewerDialog
 import com.example.ui.theme.customTextFieldColors
 import com.example.util.AgeUtil
 import java.text.SimpleDateFormat
@@ -53,6 +56,7 @@ fun SpacePersonaProfileScreen(
 ) {
     val age = AgeUtil.computeAge(persona.dob, space.simDate)
     var placePickerExpanded by remember { mutableStateOf(false) }
+    var viewerIndex by remember { mutableStateOf<Int?>(null) }
 
     Scaffold(
         modifier = modifier,
@@ -137,7 +141,7 @@ fun SpacePersonaProfileScreen(
             if (persona.portfolioImageUrls.isNotEmpty()) {
                 SectionLabel("Portfolio")
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(persona.portfolioImageUrls) { url ->
+                    itemsIndexed(persona.portfolioImageUrls) { index, url ->
                         AsyncImage(
                             model = url,
                             contentDescription = "Portfolio photo",
@@ -146,9 +150,18 @@ fun SpacePersonaProfileScreen(
                                 .size(96.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .clickable { viewerIndex = index }
                         )
                     }
                 }
+            }
+
+            if (viewerIndex != null) {
+                ImageViewerDialog(
+                    images = persona.portfolioImageUrls,
+                    initialIndex = viewerIndex!!,
+                    onDismiss = { viewerIndex = null }
+                )
             }
 
             // Details

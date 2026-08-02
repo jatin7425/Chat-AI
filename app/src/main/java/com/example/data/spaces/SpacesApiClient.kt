@@ -139,6 +139,31 @@ object SpacesApiClient {
             }
         }
 
+    /** Refreshes every persona-to-persona relationship label in a Space based on how they currently feel about each other. Uses chatClient's longer timeout -- one LLM call per persona pair. */
+    suspend fun syncRelationships(baseUrl: String, idToken: String, spaceId: String): Result<Int> =
+        withContext(Dispatchers.IO) {
+            try {
+                val request = Request.Builder()
+                    .url("${sanitizeBaseUrl(baseUrl)}/api/spaces/$spaceId/personas/sync-relationships")
+                    .addHeader("Authorization", "Bearer $idToken")
+                    .post("{}".toRequestBody(jsonMediaType))
+                    .build()
+
+                chatClient.newCall(request).execute().use { response ->
+                    val bodyText = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        val errorMsg = runCatching { JSONObject(bodyText).optString("error") }.getOrNull()
+                        return@withContext Result.failure(
+                            IllegalStateException(errorMsg?.ifBlank { null } ?: "Sync failed: HTTP ${response.code}")
+                        )
+                    }
+                    Result.success(JSONObject(bodyText).optInt("pairsUpdated"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
     /** Fire-and-forget: tells the backend the user just opened this Space, so it can (debounced) generate a spontaneous activity beat if the Space has been idle a while. */
     suspend fun notifySpaceView(baseUrl: String, idToken: String, spaceId: String): Result<Unit> =
         withContext(Dispatchers.IO) {
