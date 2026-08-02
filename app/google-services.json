@@ -12,7 +12,20 @@
           "package_name": "com.aistudio.soulai.chat"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "904544496458-8g6o3bo36nf6cdhooq3nj6gfbolj5tc1.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aistudio.soulai.chat",
+            "certificate_hash": "f88f826a883bebe806cafbf0ecb0fc72a299ca65"
+          }
+        },
+        {
+          "client_id": "904544496458-1d3ef1almpbao1ei0al8e0p96rpgd8id.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDKkGtvff0jM-YVo0jXlihcK3keSBIVA8g"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "904544496458-1d3ef1almpbao1ei0al8e0p96rpgd8id.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
