@@ -1,2 +1,0 @@
-s/msg.messageId,\n                                    msg.content,\n                                    currentPersona.voice/msg.messageId,\n                                    msg.content,\n                                    currentPersona.voice ?: ""/g
-s/lastMessage.messageId,\n                lastMessage.content,\n                currentPersona.voice/lastMessage.messageId,\n                lastMessage.content,\n                currentPersona.voice ?: ""/g

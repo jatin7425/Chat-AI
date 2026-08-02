@@ -1,2 +1,0 @@
-s/private val MIGRATION_3_4 = object : Migration(3, 4) {/private val MIGRATION_4_5 = object : Migration(4, 5) {\n            override fun migrate(db: SupportSQLiteDatabase) {\n                db.execSQL("ALTER TABLE personas ADD COLUMN voice TEXT NOT NULL DEFAULT ''")\n            }\n        }\n\n        private val MIGRATION_3_4 = object : Migration(3, 4) {/g
-s/\.addMigrations(MIGRATION_3_4)/\.addMigrations(MIGRATION_3_4, MIGRATION_4_5)/g

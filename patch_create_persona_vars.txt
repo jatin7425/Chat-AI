@@ -1,3 +1,0 @@
-/var name/a\
-    val voiceOptions = listOf("Magpie-Multilingual.HI-IN.Phung.Neutral", "Magpie-Multilingual.HI-IN.Jason.Neutral", "Magpie-Multilingual.HI-IN.Mia.Neutral", "Magpie-Multilingual.HI-IN.Aria.Neutral", "Magpie-Multilingual.HI-IN.Leo.Neutral", "Magpie-Multilingual.HI-IN.Isabela.Neutral")\
-    var voice by remember { mutableStateOf(if (existingPersona?.voice.isNullOrBlank()) "Magpie-Multilingual.HI-IN.Jason.Neutral" else existingPersona?.voice ?: "Magpie-Multilingual.HI-IN.Jason.Neutral") }
