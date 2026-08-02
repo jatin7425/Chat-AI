@@ -21,9 +21,25 @@ service cloud.firestore {
 
       match /personas/{personaId} {
         allow read, write: if ownsSpace(spaceId);
+
+        match /activityLog/{entryId} {
+          allow read: if ownsSpace(spaceId);
+          allow write: if false; // backend only
+        }
       }
       match /userCharacter/{docId} {
         allow read, write: if ownsSpace(spaceId);
+      }
+      match /places/{placeId} {
+        allow read, write: if ownsSpace(spaceId);
+      }
+      match /groupChats/{groupChatId} {
+        allow read, write: if ownsSpace(spaceId);
+
+        match /messages/{messageId} {
+          allow read: if ownsSpace(spaceId);
+          allow write: if false; // backend only
+        }
       }
       match /chats/{personaId}/messages/{messageId} {
         allow read: if ownsSpace(spaceId);

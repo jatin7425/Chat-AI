@@ -7,13 +7,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.SentimentDissatisfied
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -34,6 +33,8 @@ fun SpacePersonasScreen(
     onCreatePersona: () -> Unit,
     onEditPersona: (SpacePersonaModel) -> Unit,
     onDeletePersona: (SpacePersonaModel) -> Unit,
+    onViewProfile: (SpacePersonaModel) -> Unit,
+    onViewMood: (SpacePersonaModel) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -119,7 +120,9 @@ fun SpacePersonasScreen(
                         simDate = space.simDate,
                         onChatClick = { onSelectPersonaForChat(persona) },
                         onEditClick = { onEditPersona(persona) },
-                        onDeleteClick = { onDeletePersona(persona) }
+                        onDeleteClick = { onDeletePersona(persona) },
+                        onViewProfileClick = { onViewProfile(persona) },
+                        onViewMoodClick = { onViewMood(persona) }
                     )
                 }
             }
@@ -133,9 +136,12 @@ private fun PersonaCard(
     simDate: String,
     onChatClick: () -> Unit,
     onEditClick: () -> Unit,
-    onDeleteClick: () -> Unit
+    onDeleteClick: () -> Unit,
+    onViewProfileClick: () -> Unit,
+    onViewMoodClick: () -> Unit
 ) {
     val age = AgeUtil.computeAge(persona.dob, simDate)
+    var menuExpanded by remember { mutableStateOf(false) }
 
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -154,40 +160,56 @@ private fun PersonaCard(
                 name = persona.name,
                 avatarStyle = persona.avatarStyle,
                 avatarSeed = persona.avatarSeed,
+                avatarUri = persona.avatarImageUrl.ifBlank { null },
                 size = 52.dp
             )
 
             Spacer(modifier = Modifier.width(14.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = persona.name,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 16.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (persona.relationshipToUser.isNotBlank()) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
-                        ) {
+                Text(
+                    text = persona.name,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 16.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                if (persona.relationshipToUser.isNotBlank() || age != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (persona.relationshipToUser.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                            ) {
+                                Text(
+                                    text = persona.relationshipToUser,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+                        if (persona.relationshipToUser.isNotBlank() && age != null) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        if (age != null) {
                             Text(
-                                text = persona.relationshipToUser,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                text = "Age $age",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                fontSize = 11.sp
                             )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
                     text = persona.bio.ifBlank { "Tap to start chatting with ${persona.name}" },
@@ -197,27 +219,34 @@ private fun PersonaCard(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                if (age != null) {
+                if (persona.currentPlaceName.isNotBlank()) {
                     Text(
-                        text = "Age $age",
+                        text = "📍 ${persona.currentPlaceName}",
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                        fontSize = 11.sp
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
 
-            IconButton(onClick = onEditClick, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Default.Edit, contentDescription = "Edit Persona", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box {
+                    IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "More options", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    }
+                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                        DropdownMenuItem(text = { Text("View Profile") }, onClick = { menuExpanded = false; onViewProfileClick() })
+                        DropdownMenuItem(text = { Text("Edit Persona") }, onClick = { menuExpanded = false; onEditClick() })
+                        DropdownMenuItem(text = { Text("Persona Mood") }, onClick = { menuExpanded = false; onViewMoodClick() })
+                    }
+                }
+                IconButton(onClick = onDeleteClick, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete Persona", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                }
             }
-            IconButton(onClick = onDeleteClick, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete Persona", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-            }
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp)
-            )
         }
     }
 }

@@ -2,21 +2,24 @@ package com.example.ui.spaces.dashboard
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Diamond
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -25,6 +28,9 @@ import androidx.compose.ui.unit.sp
 import com.example.data.spaces.model.SpaceModel
 import com.example.ui.spaces.components.PillTone
 import com.example.ui.spaces.components.StatusPill
+import com.example.ui.theme.PrimaryPurple
+import com.example.ui.theme.SecondaryPink
+import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,6 +42,8 @@ fun SpacesDashboardScreen(
     onDeleteSpace: (SpaceModel) -> Unit = {},
     deleteError: String? = null,
     onDismissDeleteError: () -> Unit = {},
+    onOpenNotifications: () -> Unit = {},
+    unreadNotificationCount: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -71,6 +79,23 @@ fun SpacesDashboardScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onOpenNotifications) {
+                        BadgedBox(
+                            badge = {
+                                if (unreadNotificationCount > 0) {
+                                    Badge(containerColor = MaterialTheme.colorScheme.primary) {
+                                        Text(if (unreadNotificationCount > 9) "9+" else unreadNotificationCount.toString())
+                                    }
+                                }
+                            }
+                        ) {
+                            Icon(
+                                Icons.Default.Notifications,
+                                contentDescription = "Notifications",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                     IconButton(onClick = onOpenSettings) {
                         Icon(
                             Icons.Default.Settings,
@@ -189,6 +214,25 @@ private fun SpaceCard(space: SpaceModel, onClick: () -> Unit, onDeleteClick: () 
                 .padding(16.dp),
             verticalAlignment = Alignment.Top
         ) {
+            val hash = abs(space.name.hashCode())
+            val palettes = listOf(
+                listOf(PrimaryPurple, SecondaryPink),
+                listOf(androidx.compose.ui.graphics.Color(0xFF11998E), androidx.compose.ui.graphics.Color(0xFF38EF7D)),
+                listOf(androidx.compose.ui.graphics.Color(0xFFF12711), androidx.compose.ui.graphics.Color(0xFFF5AF19)),
+                listOf(androidx.compose.ui.graphics.Color(0xFF00B4DB), androidx.compose.ui.graphics.Color(0xFF0083B0))
+            )
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Brush.linearGradient(palettes[hash % palettes.size])),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.AutoStories, contentDescription = null, tint = androidx.compose.ui.graphics.Color.White, modifier = Modifier.size(24.dp))
+            }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -227,20 +271,16 @@ private fun SpaceCard(space: SpaceModel, onClick: () -> Unit, onDeleteClick: () 
                 )
             }
 
-            IconButton(onClick = onDeleteClick, modifier = Modifier.size(36.dp)) {
+            Spacer(modifier = Modifier.width(4.dp))
+
+            IconButton(onClick = onDeleteClick, modifier = Modifier.size(32.dp)) {
                 Icon(
                     Icons.Default.Delete,
                     contentDescription = "Delete Space",
                     tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(16.dp)
                 )
             }
-
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
     }
 }

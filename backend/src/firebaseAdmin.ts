@@ -20,3 +20,4 @@ export const firebaseApp = admin.initializeApp({
 export const firestore = firebaseApp.firestore();
 export const auth = firebaseApp.auth();
 export const messaging = firebaseApp.messaging();
+export const FieldValue = admin.firestore.FieldValue;

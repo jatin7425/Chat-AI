@@ -229,6 +229,21 @@ fun SpacesBackendSettingsScreen(
     var isLoading by remember { mutableStateOf(false) }
     val buildDefaultUrl = remember { SpacesApiClient.effectiveBaseUrl("") }
 
+    // Convenience presets for this dev setup -- LAN only works on the same Wi-Fi as the backend
+    // machine and breaks if its IP changes. "Custom" just leaves the field free-typed. (A public
+    // tunnel preset was tried and dropped -- localtunnel's free subdomains aren't stable across
+    // reconnects, so it silently pointed at the wrong URL after any restart.)
+    val presets = remember(buildDefaultUrl) {
+        listOf(
+            "LAN (same Wi-Fi only)" to buildDefaultUrl,
+            "Custom" to null
+        )
+    }
+    var presetsExpanded by remember { mutableStateOf(false) }
+    var selectedPresetLabel by remember(baseUrl, presets) {
+        mutableStateOf(presets.firstOrNull { it.second != null && it.second == baseUrl }?.first ?: "Custom")
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -265,6 +280,42 @@ fun SpacesBackendSettingsScreen(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            Text(
+                text = "Connect via",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Medium,
+                fontSize = 14.sp
+            )
+
+            ExposedDropdownMenuBox(
+                expanded = presetsExpanded,
+                onExpandedChange = { presetsExpanded = it }
+            ) {
+                OutlinedTextField(
+                    value = selectedPresetLabel,
+                    onValueChange = {},
+                    readOnly = true,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = presetsExpanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = customTextFieldColors()
+                )
+                ExposedDropdownMenu(expanded = presetsExpanded, onDismissRequest = { presetsExpanded = false }) {
+                    presets.forEach { (label, url) ->
+                        DropdownMenuItem(
+                            text = { Text(label) },
+                            onClick = {
+                                selectedPresetLabel = label
+                                if (url != null) baseUrl = url
+                                presetsExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
             Text(
                 text = "Base URL",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

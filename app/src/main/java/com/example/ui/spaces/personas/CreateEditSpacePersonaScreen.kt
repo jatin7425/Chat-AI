@@ -1,17 +1,13 @@
 package com.example.ui.spaces.personas
 
 import android.net.Uri
-import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,24 +15,31 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddAPhoto
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.spaces.AppearanceFieldsDto
+import coil.compose.AsyncImage
 import com.example.data.spaces.model.AppearanceModel
+import com.example.data.spaces.model.PlaceModel
 import com.example.data.spaces.model.SpaceModel
 import com.example.data.spaces.model.SpacePersonaModel
 import com.example.data.spaces.model.UserCharacterModel
 import com.example.ui.theme.customTextFieldColors
 import com.example.util.AgeUtil
+import com.example.util.compressImageToJpegBytes
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.withContext
+import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,73 +49,125 @@ fun CreateEditSpacePersonaScreen(
     existingUserCharacter: UserCharacterModel?,
     otherPersonas: List<SpacePersonaModel>,
     isUserCharacterMode: Boolean,
+    places: List<PlaceModel> = emptyList(),
+    prefillName: String = "",
     onBack: () -> Unit,
     onSavePersona: (SpacePersonaModel) -> Unit,
     onSaveUserCharacter: (UserCharacterModel) -> Unit,
-    onAnalyzePhoto: suspend (imageBase64: String, mimeType: String) -> Result<AppearanceFieldsDto>,
+    onUploadImage: suspend (personaId: String, kind: String, bytes: ByteArray, mimeType: String) -> Result<String>,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    var name by remember { mutableStateOf(existingPersona?.name ?: existingUserCharacter?.name ?: "") }
-    var dob by remember { mutableStateOf(existingPersona?.dob ?: existingUserCharacter?.dob ?: "") }
-    var background by remember { mutableStateOf(existingPersona?.background ?: existingUserCharacter?.background ?: "") }
+    val personaId = remember { existingPersona?.id?.ifBlank { null } ?: UUID.randomUUID().toString() }
 
-    var relationshipToUser by remember { mutableStateOf(existingPersona?.relationshipToUser ?: "") }
-    var bio by remember { mutableStateOf(existingPersona?.bio ?: "") }
-    var mood by remember { mutableFloatStateOf((existingPersona?.mood ?: 0).toFloat()) }
-    var aggressiveness by remember { mutableFloatStateOf((existingPersona?.aggressiveness ?: 0).toFloat()) }
-    val relationshipTones = remember {
+    // Keyed by the incoming entities: the Firestore listener behind existingUserCharacter (and,
+    // in principle, existingPersona) can emit null on the very first composition before the real
+    // document arrives a frame later. remember{} without a key only captures its INITIAL value,
+    // so without this key the form would silently stay blank forever even once real data shows
+    // up -- this was exactly why "Your Character" never autofilled.
+    var name by remember(existingPersona, existingUserCharacter) { mutableStateOf(existingPersona?.name ?: existingUserCharacter?.name ?: prefillName) }
+    var dob by remember(existingPersona, existingUserCharacter) { mutableStateOf(existingPersona?.dob ?: existingUserCharacter?.dob ?: "") }
+    var background by remember(existingPersona, existingUserCharacter) { mutableStateOf(existingPersona?.background ?: existingUserCharacter?.background ?: "") }
+
+    var relationshipToUser by remember(existingPersona) { mutableStateOf(existingPersona?.relationshipToUser ?: "") }
+    var bio by remember(existingPersona) { mutableStateOf(existingPersona?.bio ?: "") }
+    var mood by remember(existingPersona) { mutableFloatStateOf((existingPersona?.mood ?: 0).toFloat()) }
+    var aggressiveness by remember(existingPersona) { mutableFloatStateOf((existingPersona?.aggressiveness ?: 0).toFloat()) }
+    val relationshipTones = remember(existingPersona) {
         mutableStateMapOf<String, String>().apply {
             existingPersona?.relationshipsToOtherPersonas?.let { putAll(it) }
         }
     }
 
     val initialAppearance = existingPersona?.appearance ?: existingUserCharacter?.appearance ?: AppearanceModel()
-    var hairColor by remember { mutableStateOf(initialAppearance.hairColor) }
-    var hairStyle by remember { mutableStateOf(initialAppearance.hairStyle) }
-    var eyeColor by remember { mutableStateOf(initialAppearance.eyeColor) }
-    var skinTone by remember { mutableStateOf(initialAppearance.skinTone) }
-    var build by remember { mutableStateOf(initialAppearance.build) }
-    var height by remember { mutableStateOf(initialAppearance.height) }
-    var extraFeatures by remember { mutableStateOf(initialAppearance.extraFeatures) }
+    var hairColor by remember(existingPersona, existingUserCharacter) { mutableStateOf(initialAppearance.hairColor) }
+    var hairStyle by remember(existingPersona, existingUserCharacter) { mutableStateOf(initialAppearance.hairStyle) }
+    var eyeColor by remember(existingPersona, existingUserCharacter) { mutableStateOf(initialAppearance.eyeColor) }
+    var skinTone by remember(existingPersona, existingUserCharacter) { mutableStateOf(initialAppearance.skinTone) }
+    var build by remember(existingPersona, existingUserCharacter) { mutableStateOf(initialAppearance.build) }
+    var height by remember(existingPersona, existingUserCharacter) { mutableStateOf(initialAppearance.height) }
+    var extraFeatures by remember(existingPersona, existingUserCharacter) { mutableStateOf(initialAppearance.extraFeatures) }
 
-    var isAnalyzingPhoto by remember { mutableStateOf(false) }
-    var photoError by remember { mutableStateOf<String?>(null) }
+    var currentPlaceId by remember(existingUserCharacter) { mutableStateOf(existingUserCharacter?.currentPlaceId ?: "") }
+    var currentPlaceName by remember(existingUserCharacter) { mutableStateOf(existingUserCharacter?.currentPlaceName ?: "") }
+    var placePickerExpanded by remember { mutableStateOf(false) }
 
-    val photoPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+    var avatarImageUrl by remember(existingPersona) { mutableStateOf(existingPersona?.avatarImageUrl ?: "") }
+    var isUploadingAvatar by remember { mutableStateOf(false) }
+    var avatarError by remember { mutableStateOf<String?>(null) }
+
+    var chatBackgroundImageUrl by remember(existingPersona) { mutableStateOf(existingPersona?.chatBackgroundImageUrl ?: "") }
+    var chatBackgroundOpacity by remember(existingPersona) { mutableFloatStateOf(existingPersona?.chatBackgroundOpacity ?: 1f) }
+    var isUploadingBackground by remember { mutableStateOf(false) }
+    var backgroundError by remember { mutableStateOf<String?>(null) }
+
+    val portfolioImageUrls = remember(existingPersona) {
+        mutableStateListOf<String>().apply { addAll(existingPersona?.portfolioImageUrls ?: emptyList()) }
+    }
+    var isUploadingPortfolio by remember { mutableStateOf(false) }
+    var portfolioError by remember { mutableStateOf<String?>(null) }
+    var selectedPortfolioImage by remember { mutableStateOf<String?>(null) }
+
+    fun addToPortfolio(url: String) {
+        if (url.isNotBlank() && !portfolioImageUrls.contains(url)) portfolioImageUrls.add(url)
+    }
+
+    val avatarPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
         coroutineScope.launch {
-            isAnalyzingPhoto = true
-            photoError = null
-            try {
-                val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
-                val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
-                    val output = ByteArrayOutputStream()
-                    input.copyTo(output)
-                    output.toByteArray()
-                }
-                if (bytes == null) {
-                    photoError = "Couldn't read that photo."
-                } else {
-                    val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                    val result = onAnalyzePhoto(base64, mimeType)
-                    result.onSuccess { fields ->
-                        if (fields.hairColor.isNotBlank()) hairColor = fields.hairColor
-                        if (fields.hairStyle.isNotBlank()) hairStyle = fields.hairStyle
-                        if (fields.eyeColor.isNotBlank()) eyeColor = fields.eyeColor
-                        if (fields.skinTone.isNotBlank()) skinTone = fields.skinTone
-                        if (fields.build.isNotBlank()) build = fields.build
-                        if (fields.height.isNotBlank()) height = fields.height
-                        if (fields.extraFeatures.isNotBlank()) extraFeatures = fields.extraFeatures
-                    }.onFailure {
-                        photoError = it.localizedMessage ?: "Photo analysis failed."
-                    }
-                }
-            } finally {
-                isAnalyzingPhoto = false
+            isUploadingAvatar = true
+            avatarError = null
+            val bytes = withContext(Dispatchers.Default) {
+                compressImageToJpegBytes(context, uri, maxDimension = 512, maxBytes = 300_000)
             }
+            if (bytes == null) {
+                avatarError = "Couldn't read that photo."
+            } else {
+                onUploadImage(personaId, "avatar", bytes, "image/jpeg")
+                    .onSuccess { url -> avatarImageUrl = url; addToPortfolio(url) }
+                    .onFailure { avatarError = it.localizedMessage ?: "Upload failed." }
+            }
+            isUploadingAvatar = false
+        }
+    }
+
+    val backgroundPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            isUploadingBackground = true
+            backgroundError = null
+            val bytes = withContext(Dispatchers.Default) {
+                compressImageToJpegBytes(context, uri, maxDimension = 1600, maxBytes = 900_000)
+            }
+            if (bytes == null) {
+                backgroundError = "Couldn't read that photo."
+            } else {
+                onUploadImage(personaId, "background", bytes, "image/jpeg")
+                    .onSuccess { url -> chatBackgroundImageUrl = url; addToPortfolio(url) }
+                    .onFailure { backgroundError = it.localizedMessage ?: "Upload failed." }
+            }
+            isUploadingBackground = false
+        }
+    }
+
+    val portfolioPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            isUploadingPortfolio = true
+            portfolioError = null
+            val bytes = withContext(Dispatchers.Default) {
+                compressImageToJpegBytes(context, uri, maxDimension = 1600, maxBytes = 900_000)
+            }
+            if (bytes == null) {
+                portfolioError = "Couldn't read that photo."
+            } else {
+                onUploadImage(personaId, "portfolio", bytes, "image/jpeg")
+                    .onSuccess { url -> addToPortfolio(url) }
+                    .onFailure { portfolioError = it.localizedMessage ?: "Upload failed." }
+            }
+            isUploadingPortfolio = false
         }
     }
 
@@ -123,13 +178,15 @@ fun CreateEditSpacePersonaScreen(
                     name = name.trim(),
                     dob = dob.trim(),
                     background = background.trim(),
-                    appearance = AppearanceModel(hairColor, hairStyle, eyeColor, skinTone, build, height, extraFeatures)
+                    appearance = AppearanceModel(hairColor, hairStyle, eyeColor, skinTone, build, height, extraFeatures),
+                    currentPlaceId = currentPlaceId,
+                    currentPlaceName = currentPlaceName
                 )
             )
         } else {
             onSavePersona(
                 SpacePersonaModel(
-                    id = existingPersona?.id ?: "",
+                    id = personaId,
                     spaceId = space.id,
                     name = name.trim(),
                     dob = dob.trim(),
@@ -142,7 +199,11 @@ fun CreateEditSpacePersonaScreen(
                     appearance = AppearanceModel(hairColor, hairStyle, eyeColor, skinTone, build, height, extraFeatures),
                     relationshipsToOtherPersonas = relationshipTones.filterValues { it.isNotBlank() },
                     avatarStyle = existingPersona?.avatarStyle ?: "Avataaars (Modern)",
-                    avatarSeed = existingPersona?.avatarSeed ?: name
+                    avatarSeed = existingPersona?.avatarSeed ?: name,
+                    avatarImageUrl = avatarImageUrl,
+                    chatBackgroundImageUrl = chatBackgroundImageUrl,
+                    chatBackgroundOpacity = chatBackgroundOpacity,
+                    portfolioImageUrls = portfolioImageUrls.toList()
                 )
             )
         }
@@ -222,6 +283,231 @@ fun CreateEditSpacePersonaScreen(
                 LabeledField("Bio", bio, { bio = it }, placeholder = "A short description")
             }
 
+            if (isUserCharacterMode && places.isNotEmpty()) {
+                Text("Your location", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
+                ExposedDropdownMenuBox(expanded = placePickerExpanded, onExpandedChange = { placePickerExpanded = it }) {
+                    OutlinedTextField(
+                        value = currentPlaceName.ifBlank { "Not set" },
+                        onValueChange = {},
+                        readOnly = true,
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = placePickerExpanded) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = customTextFieldColors()
+                    )
+                    ExposedDropdownMenu(expanded = placePickerExpanded, onDismissRequest = { placePickerExpanded = false }) {
+                        places.forEach { place ->
+                            DropdownMenuItem(
+                                text = { Text(place.name) },
+                                onClick = {
+                                    currentPlaceId = place.id
+                                    currentPlaceName = place.name
+                                    placePickerExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (!isUserCharacterMode) {
+                Text(
+                    text = "Photos",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (avatarImageUrl.isNotBlank()) {
+                            AsyncImage(
+                                model = avatarImageUrl,
+                                contentDescription = "Profile photo",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Icon(Icons.Default.AddAPhoto, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Column {
+                        OutlinedButton(
+                            onClick = { avatarPickerLauncher.launch("image/*") },
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                            enabled = !isUploadingAvatar
+                        ) {
+                            Text(if (isUploadingAvatar) "Uploading…" else "Choose profile photo", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        if (avatarError != null) {
+                            Text(avatarError ?: "", fontSize = 12.sp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 4.dp))
+                        }
+                    }
+                }
+
+                Column {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(100.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (chatBackgroundImageUrl.isNotBlank()) {
+                            AsyncImage(
+                                model = chatBackgroundImageUrl,
+                                contentDescription = "Chat background",
+                                contentScale = ContentScale.Crop,
+                                alpha = chatBackgroundOpacity,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Icon(Icons.Default.Image, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { backgroundPickerLauncher.launch("image/*") },
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        enabled = !isUploadingBackground
+                    ) {
+                        Text(if (isUploadingBackground) "Uploading…" else "Choose chat background", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    if (backgroundError != null) {
+                        Text(backgroundError ?: "", fontSize = 12.sp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 4.dp))
+                    }
+                    if (chatBackgroundImageUrl.isNotBlank()) {
+                        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                            Text("Background opacity", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                            Text("${(chatBackgroundOpacity * 100).toInt()}%", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        }
+                        Slider(value = chatBackgroundOpacity, onValueChange = { chatBackgroundOpacity = it }, valueRange = 0f..1f, modifier = Modifier.fillMaxWidth())
+                    }
+                }
+
+                Column {
+                    Text(
+                        text = "Portfolio",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        "Every photo you upload lands here too -- tap one to use it as the profile photo or chat background.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(portfolioImageUrls) { url ->
+                            Box(
+                                modifier = Modifier
+                                    .size(80.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    .clickable { selectedPortfolioImage = url }
+                            ) {
+                                AsyncImage(
+                                    model = url,
+                                    contentDescription = "Portfolio photo",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                if (url == avatarImageUrl || url == chatBackgroundImageUrl) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomCenter)
+                                            .fillMaxWidth()
+                                            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.55f))
+                                            .padding(vertical = 3.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = if (url == avatarImageUrl) "Profile" else "Background",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .size(80.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    .clickable(enabled = !isUploadingPortfolio) { portfolioPickerLauncher.launch("image/*") },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isUploadingPortfolio) {
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Icon(Icons.Default.AddAPhoto, contentDescription = "Add to portfolio", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                    if (portfolioError != null) {
+                        Text(portfolioError ?: "", fontSize = 12.sp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 4.dp))
+                    }
+                }
+            }
+
+            if (selectedPortfolioImage != null) {
+                val url = selectedPortfolioImage!!
+                AlertDialog(
+                    onDismissRequest = { selectedPortfolioImage = null },
+                    title = { Text("Use this photo") },
+                    text = {
+                        Column {
+                            AsyncImage(
+                                model = url,
+                                contentDescription = "Selected portfolio photo",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(160.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            TextButton(
+                                onClick = { avatarImageUrl = url; selectedPortfolioImage = null },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Set as profile photo") }
+                            TextButton(
+                                onClick = { chatBackgroundImageUrl = url; selectedPortfolioImage = null },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Set as background") }
+                            TextButton(
+                                onClick = {
+                                    portfolioImageUrls.remove(url)
+                                    if (avatarImageUrl == url) avatarImageUrl = ""
+                                    if (chatBackgroundImageUrl == url) chatBackgroundImageUrl = ""
+                                    selectedPortfolioImage = null
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { selectedPortfolioImage = null }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
+
             // Appearance
             Text(
                 text = "Appearance",
@@ -229,52 +515,6 @@ fun CreateEditSpacePersonaScreen(
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                Box(
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.AddAPhoto, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Column {
-                    OutlinedButton(
-                        onClick = { photoPickerLauncher.launch("image/*") },
-                        shape = RoundedCornerShape(12.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                    ) {
-                        Text("Upload photo to auto-fill", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                    if (isAnalyzingPhoto) {
-                        val transition = rememberInfiniteTransition(label = "analyzing")
-                        val alpha by transition.animateFloat(
-                            initialValue = 0.3f,
-                            targetValue = 1f,
-                            animationSpec = infiniteRepeatable(
-                                animation = tween(700, easing = LinearEasing),
-                                repeatMode = RepeatMode.Reverse
-                            ),
-                            label = "analyzing_alpha"
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                            Box(
-                                modifier = Modifier
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = alpha))
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Analyzing photo…", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    if (photoError != null) {
-                        Text(photoError ?: "", fontSize = 12.sp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 4.dp))
-                    }
-                }
-            }
 
             FlowRowFields {
                 LabeledField("Hair color", hairColor, { hairColor = it }, placeholder = "e.g. Auburn", modifier = Modifier.weight(1f))

@@ -2,10 +2,15 @@ package com.example.ui.spaces.home
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -33,6 +38,9 @@ fun SpaceHomeScreen(
     onEditUserCharacter: () -> Unit,
     onOpenPersonas: () -> Unit,
     onOpenPersonaChat: (SpacePersonaModel) -> Unit,
+    onOpenPlaces: () -> Unit,
+    onOpenGroupChats: () -> Unit,
+    onOpenActivityLog: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showStopConfirm by remember { mutableStateOf(false) }
@@ -81,6 +89,7 @@ fun SpaceHomeScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -136,7 +145,8 @@ fun SpaceHomeScreen(
                         fontSize = 16.sp
                     )
                     Text(
-                        text = "How you appear in this story",
+                        text = userCharacter?.currentPlaceName?.ifBlank { null }?.let { "Currently at $it" }
+                            ?: "How you appear in this story",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 12.sp
                     )
@@ -162,6 +172,7 @@ fun SpaceHomeScreen(
                                     name = persona.name,
                                     avatarStyle = persona.avatarStyle,
                                     avatarSeed = persona.avatarSeed,
+                                    avatarUri = persona.avatarImageUrl.ifBlank { null },
                                     size = 32.dp,
                                     modifier = Modifier.offset(x = (-8 * index).dp)
                                 )
@@ -174,6 +185,37 @@ fun SpaceHomeScreen(
                             fontSize = 13.sp
                         )
                     }
+                }
+            }
+
+            SectionHeading("Places")
+            RowCard(onClick = onOpenPlaces) {
+                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Place, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Manage where this story happens", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                }
+            }
+
+            SectionHeading("Group Chats")
+            RowCard(onClick = onOpenGroupChats) {
+                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Groups, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Talk to several personas at once", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                }
+            }
+
+            SectionHeading("Activity Log")
+            RowCard(onClick = onOpenActivityLog) {
+                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Chat, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        if (isRunning) "See what everyone's been up to, live" else "See what everyone's been up to",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp
+                    )
                 }
             }
         }

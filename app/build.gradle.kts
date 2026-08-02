@@ -60,7 +60,7 @@ android {
             buildConfigField(
                 "String",
                 "BACKEND_BASE_URL",
-                "\"${resolveBackendBaseUrl("LOCAL_BACKEND_URL", "https://zvmwmtrx-8787.inc1.devtunnels.ms")}\""
+                "\"${resolveBackendBaseUrl("LOCAL_BACKEND_URL", "http://192.168.1.27:8787")}\""
             )
         }
         getByName("release") {
@@ -128,6 +128,7 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
+    implementation(libs.firebase.messaging)
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services)
     implementation(libs.googleid)

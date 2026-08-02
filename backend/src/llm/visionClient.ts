@@ -1,4 +1,4 @@
-import { requireLlmConfig } from "../config";
+import { config } from "../config";
 
 export interface AppearanceFields {
   hairColor: string;
@@ -24,10 +24,20 @@ function sanitizeBaseUrl(rawUrl: string): string {
   return rawUrl.trim().replace(/\/$/, "");
 }
 
+export interface AnalyzeAppearanceOptions {
+  baseUrl: string;
+  model: string;
+  apiKey?: string;
+}
+
 /** Sends a photo to a vision-capable chat-completions endpoint and asks it to describe appearance as JSON. */
-export async function analyzeAppearance(imageBase64: string, mimeType: string): Promise<AppearanceFields> {
-  const { baseUrl, apiKey, visionModel } = requireLlmConfig();
-  const url = `${sanitizeBaseUrl(baseUrl)}/v1/chat/completions`;
+export async function analyzeAppearance(
+  imageBase64: string,
+  mimeType: string,
+  options: AnalyzeAppearanceOptions
+): Promise<AppearanceFields> {
+  const url = `${sanitizeBaseUrl(options.baseUrl)}/v1/chat/completions`;
+  const apiKey = options.apiKey ?? config.llmApiKey;
 
   const prompt =
     "Describe this person's physical appearance. Respond with ONLY a JSON object with these exact " +
@@ -41,7 +51,7 @@ export async function analyzeAppearance(imageBase64: string, mimeType: string): 
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
     },
     body: JSON.stringify({
-      model: visionModel,
+      model: options.model,
       temperature: 0.2,
       max_tokens: 500,
       messages: [
