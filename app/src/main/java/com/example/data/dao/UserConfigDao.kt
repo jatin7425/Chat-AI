@@ -20,4 +20,7 @@ interface UserConfigDao {
 
     @Query("UPDATE user_config SET spacesApiBaseUrl = :url WHERE id = 1")
     suspend fun updateSpacesApiBaseUrl(url: String)
+
+    @Query("UPDATE user_config SET mcpServerUrl = :url WHERE id = 1")
+    suspend fun updateMcpServerUrl(url: String)
 }

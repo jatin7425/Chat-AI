@@ -31,6 +31,7 @@ import com.example.ui.Screen
 import com.example.ui.auth.AuthScreen
 import com.example.ui.settings.ChatModelScreen
 import com.example.ui.settings.LiteLlmServerScreen
+import com.example.ui.settings.McpSettingsScreen
 import com.example.ui.settings.SettingsScreen
 import com.example.ui.settings.SpacesBackendSettingsScreen
 import com.example.ui.spaces.chat.SpaceDirectChatScreen
@@ -266,6 +267,7 @@ fun SoulAppContent(viewModel: MainViewModel) {
                     soulRepository = viewModel.soulRepository,
                     onBack = { viewModel.navigateBack() },
                     onNavigateToSpacesBackendSettings = { viewModel.navigateToSpacesBackendSettings() },
+                    onNavigateToMcpSettings = { viewModel.navigateToMcpSettings() },
                     onNavigateToLiteLlmServer = { viewModel.navigateToLiteLlmServer() },
                     onNavigateToChatModel = { viewModel.navigateToChatModel() },
                     llmConfig = llmConfig,
@@ -275,6 +277,13 @@ fun SoulAppContent(viewModel: MainViewModel) {
             }
             is Screen.SpacesBackendSettings -> {
                 SpacesBackendSettingsScreen(
+                    userConfig = userConfig,
+                    soulRepository = viewModel.soulRepository,
+                    onBack = { viewModel.navigateBack() }
+                )
+            }
+            is Screen.McpSettings -> {
+                McpSettingsScreen(
                     userConfig = userConfig,
                     soulRepository = viewModel.soulRepository,
                     onBack = { viewModel.navigateBack() }

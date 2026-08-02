@@ -33,6 +33,7 @@ sealed class Screen {
     object Auth : Screen()
     object Settings : Screen()
     object SpacesBackendSettings : Screen()
+    object McpSettings : Screen()
     object LiteLlmServer : Screen()
     object ChatModel : Screen()
     object SpacesDashboard : Screen()
@@ -202,6 +203,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun navigateToSpacesBackendSettings() {
         navigateTo(Screen.SpacesBackendSettings)
+    }
+
+    fun navigateToMcpSettings() {
+        navigateTo(Screen.McpSettings)
     }
 
     fun navigateToLiteLlmServer() {

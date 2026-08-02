@@ -26,4 +26,8 @@ class SoulRepository(
     suspend fun updateSpacesApiBaseUrl(url: String) {
         userConfigDao.updateSpacesApiBaseUrl(url)
     }
+
+    suspend fun updateMcpServerUrl(url: String) {
+        userConfigDao.updateMcpServerUrl(url)
+    }
 }

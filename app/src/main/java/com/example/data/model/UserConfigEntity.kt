@@ -9,5 +9,6 @@ data class UserConfigEntity(
     val darkTheme: Boolean = true,
     val firebaseUid: String? = null,
     val firebaseEmail: String? = null,
-    val spacesApiBaseUrl: String = ""
+    val spacesApiBaseUrl: String = "",
+    val mcpServerUrl: String = ""
 )

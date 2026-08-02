@@ -1,0 +1,20 @@
+{
+  "name": "spaces-mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Remote MCP server + OAuth 2.1 authorization server exposing Spaces (read + create) to external AI clients (Claude, ChatGPT, Grok, ...).",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "firebase-admin": "^12.7.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@vercel/node": "^3.2.0",
+    "typescript": "^5.6.3"
+  }
+}

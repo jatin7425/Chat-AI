@@ -17,7 +17,7 @@ import androidx.room.migration.Migration
     entities = [
         UserConfigEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -122,6 +122,12 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 db.execSQL("DROP TABLE user_config")
                 db.execSQL("ALTER TABLE user_config_new RENAME TO user_config")
+            }
+        }
+
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE user_config ADD COLUMN mcpServerUrl TEXT NOT NULL DEFAULT ''")
             }
         }
 

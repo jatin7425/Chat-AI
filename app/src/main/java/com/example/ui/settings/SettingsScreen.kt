@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,6 +36,7 @@ fun SettingsScreen(
     soulRepository: SoulRepository,
     onBack: () -> Unit,
     onNavigateToSpacesBackendSettings: () -> Unit = {},
+    onNavigateToMcpSettings: () -> Unit = {},
     onNavigateToLiteLlmServer: () -> Unit = {},
     onNavigateToChatModel: () -> Unit = {},
     llmConfig: LlmConfigModel = LlmConfigModel(),
@@ -104,6 +106,13 @@ fun SettingsScreen(
                 subtitle = SpacesApiClient.effectiveBaseUrl(userConfig?.spacesApiBaseUrl ?: "").ifBlank { "Not configured" },
                 onClick = onNavigateToSpacesBackendSettings,
                 testTag = "settings_backend_server_item"
+            )
+
+            SettingsMenuCard(
+                title = "MCP Connection",
+                subtitle = userConfig?.mcpServerUrl?.ifBlank { "Not configured" } ?: "Not configured",
+                onClick = onNavigateToMcpSettings,
+                testTag = "settings_mcp_connection_item"
             )
 
             SettingsMenuCard(
@@ -405,6 +414,121 @@ fun SpacesBackendSettingsScreen(
                 ) {
                     Text("Save", fontWeight = FontWeight.Bold, color = Color.White)
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Shows/lets the user set the URL of their self-deployed Spaces MCP server (see mcp-server/ --
+ * a separate Vercel-deployed service, distinct from the "Backend Server" setting above, since
+ * the user controls their own Vercel domain and there's no CI-supplied build-time default to
+ * fall back to).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun McpSettingsScreen(
+    userConfig: UserConfigEntity?,
+    soulRepository: SoulRepository,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+
+    var mcpUrl by remember { mutableStateOf(userConfig?.mcpServerUrl ?: "") }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .padding(top = 12.dp),
+                title = {
+                    Text(
+                        "MCP Connection",
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.background
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .navigationBarsPadding()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = "Server URL",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Medium,
+                fontSize = 14.sp
+            )
+
+            OutlinedTextField(
+                value = mcpUrl,
+                onValueChange = { mcpUrl = it },
+                placeholder = { Text("https://your-project.vercel.app", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("mcp_server_url_input"),
+                shape = RoundedCornerShape(12.dp),
+                colors = customTextFieldColors(),
+                singleLine = true,
+                trailingIcon = {
+                    IconButton(onClick = {
+                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(mcpUrl))
+                        Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+                    }) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            )
+
+            Text(
+                text = "Deploy mcp-server/ to Vercel (see its README), paste the resulting URL here, then " +
+                    "add it as a remote MCP connector in your AI client (Claude, ChatGPT, Grok, ...) and sign " +
+                    "in with your account when prompted. The connector can then read and create Spaces, " +
+                    "Personas, and Places for you -- it cannot delete anything or control a running simulation.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+                lineHeight = 18.sp
+            )
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Button(
+                onClick = {
+                    coroutineScope.launch {
+                        soulRepository.updateMcpServerUrl(mcpUrl.trim())
+                        Toast.makeText(context, "MCP server URL saved!", Toast.LENGTH_SHORT).show()
+                        onBack()
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("save_mcp_url_button"),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Text("Save", fontWeight = FontWeight.Bold, color = Color.White)
             }
         }
     }
