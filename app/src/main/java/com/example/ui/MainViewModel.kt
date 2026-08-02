@@ -105,14 +105,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Upserts the signed-in user's profile into the backend (Firestore users/{uid}), covering
      * every auth path uniformly: email sign-up, email sign-in, Google SSO, and cold-start
-     * rehydration of an already-signed-in session. Fires on every currentUser emission where a
-     * backend URL is configured; best-effort and silent on failure -- the backend runs locally
-     * during dev and may legitimately be offline, and this must never block sign-in/sign-up,
-     * which succeed or fail purely on Firebase Auth.
+     * rehydration of an already-signed-in session. Uses SpacesApiClient.effectiveBaseUrl, so a
+     * manual Settings override wins if set, otherwise the build-injected default (dev-tunnel URL
+     * on debug, CI-supplied URL on release) is used automatically -- no manual Settings entry
+     * required for the common case. Best-effort and silent on failure: the backend may
+     * legitimately be offline (it only runs locally during dev), and this must never block
+     * sign-in/sign-up, which succeed or fail purely on Firebase Auth.
      */
     private fun syncUserWithBackend(user: FirebaseUser) {
         viewModelScope.launch {
-            val baseUrl = soulRepository.getUserConfig().spacesApiBaseUrl
+            val baseUrl = SpacesApiClient.effectiveBaseUrl(soulRepository.getUserConfig().spacesApiBaseUrl)
             if (baseUrl.isBlank()) return@launch
             val idToken = authRepository.getIdToken() ?: return@launch
             SpacesApiClient.syncUser(baseUrl, idToken, user.displayName)

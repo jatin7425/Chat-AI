@@ -136,7 +136,7 @@ fun SettingsScreen(
             // server below, which the personas/chat feature still talks to directly.
             SettingsMenuCard(
                 title = "Backend Server",
-                subtitle = userConfig?.spacesApiBaseUrl?.ifBlank { "Not configured" } ?: "Not configured",
+                subtitle = SpacesApiClient.effectiveBaseUrl(userConfig?.spacesApiBaseUrl ?: "").ifBlank { "Not configured" },
                 onClick = onNavigateToSpacesBackendSettings,
                 testTag = "settings_backend_server_item"
             )
@@ -662,8 +662,13 @@ fun SpacesBackendSettingsScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
+    // Only an explicit persisted override -- left blank if the user has never saved one, so
+    // the build-injected default (dev tunnel URL on debug, CI-supplied URL on release) keeps
+    // being used transparently rather than getting "frozen" into storage the first time this
+    // screen renders.
     var baseUrl by remember { mutableStateOf(userConfig?.spacesApiBaseUrl ?: "") }
     var isLoading by remember { mutableStateOf(false) }
+    val buildDefaultUrl = remember { SpacesApiClient.effectiveBaseUrl("") }
 
     Scaffold(
         topBar = {
@@ -711,7 +716,12 @@ fun SpacesBackendSettingsScreen(
             OutlinedTextField(
                 value = baseUrl,
                 onValueChange = { baseUrl = it },
-                placeholder = { Text("https://your-dev-tunnel-url.com", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                placeholder = {
+                    Text(
+                        buildDefaultUrl.ifBlank { "https://your-dev-tunnel-url.com" },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("backend_base_url_input"),
@@ -721,7 +731,11 @@ fun SpacesBackendSettingsScreen(
             )
 
             Text(
-                text = "The URL used to reach the Spaces backend -- during development this is your dev tunnel's public URL (ngrok, Cloudflare Tunnel, VS Code dev tunnels, etc.), since the backend only runs locally on your machine for now.",
+                text = if (buildDefaultUrl.isNotBlank()) {
+                    "Leave blank to use the build-injected default shown above (the dev tunnel URL on debug builds, or the URL supplied at release-build time). Enter a URL here only to override it."
+                } else {
+                    "The URL used to reach the Spaces backend -- during development this is your dev tunnel's public URL (ngrok, Cloudflare Tunnel, VS Code dev tunnels, etc.), since the backend only runs locally on your machine for now."
+                },
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
                 lineHeight = 18.sp
@@ -737,7 +751,7 @@ fun SpacesBackendSettingsScreen(
                     onClick = {
                         coroutineScope.launch {
                             isLoading = true
-                            val res = SpacesApiClient.healthCheck(baseUrl)
+                            val res = SpacesApiClient.healthCheck(SpacesApiClient.effectiveBaseUrl(baseUrl))
                             isLoading = false
                             if (res.isSuccess) {
                                 Toast.makeText(context, "Connection successful!", Toast.LENGTH_SHORT).show()

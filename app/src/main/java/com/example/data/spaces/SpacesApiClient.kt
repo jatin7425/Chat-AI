@@ -1,5 +1,6 @@
 package com.example.data.spaces
 
+import com.example.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -27,6 +28,16 @@ object SpacesApiClient {
         var clean = rawUrl.trim()
         if (clean.endsWith("/")) clean = clean.dropLast(1)
         return clean
+    }
+
+    /**
+     * Resolves the URL that should actually be used: a persisted Settings override
+     * (UserConfigEntity.spacesApiBaseUrl) if the user has set one, otherwise the build-time
+     * default -- the local dev-tunnel URL baked into debug builds, or the CI-supplied URL baked
+     * into release builds (see app/build.gradle.kts' BACKEND_BASE_URL buildConfigField).
+     */
+    fun effectiveBaseUrl(persistedUrl: String): String {
+        return persistedUrl.ifBlank { BuildConfig.BACKEND_BASE_URL }
     }
 
     suspend fun healthCheck(baseUrl: String): Result<Unit> = withContext(Dispatchers.IO) {

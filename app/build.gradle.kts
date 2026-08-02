@@ -1,8 +1,27 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.google.devtools.ksp)
     alias(libs.plugins.google.services)
+}
+
+// Per-developer overrides (e.g. today's dev-tunnel URL, which rotates) live in
+// local.properties, which is gitignored -- never committed. CI/release builds pass their
+// value instead via -P<propertyKey>=... on the command line. Priority: -P property >
+// local.properties > the hardcoded fallback below.
+val localProperties = Properties().apply {
+    val localPropsFile = rootProject.file("local.properties")
+    if (localPropsFile.exists()) {
+        localPropsFile.inputStream().use { load(it) }
+    }
+}
+
+fun resolveBackendBaseUrl(propertyKey: String, fallback: String): String {
+    return (project.findProperty(propertyKey) as String?)
+        ?: localProperties.getProperty(propertyKey)
+        ?: fallback
 }
 
 android {
@@ -20,11 +39,30 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            // Local dev default: the port-forwarded (dev tunnel) URL. Override per-developer
+            // via `LOCAL_BACKEND_URL=...` in local.properties, or per-build via
+            // `-PLOCAL_BACKEND_URL=...`, without editing this file.
+            buildConfigField(
+                "String",
+                "BACKEND_BASE_URL",
+                "\"${resolveBackendBaseUrl("LOCAL_BACKEND_URL", "https://zvmwmtrx-8787.inc1.devtunnels.ms")}\""
+            )
+        }
         getByName("release") {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
+            )
+            // Release builds get no hardcoded default -- the URL must be supplied as a build
+            // input, e.g. `-PRELEASE_BACKEND_URL=https://api.example.com` from CI/a release
+            // workflow. Falls back to blank (Settings' manual entry still works as an override)
+            // rather than failing the build, since there's no release pipeline wired up yet.
+            buildConfigField(
+                "String",
+                "BACKEND_BASE_URL",
+                "\"${resolveBackendBaseUrl("RELEASE_BACKEND_URL", "")}\""
             )
         }
     }
@@ -40,6 +78,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
