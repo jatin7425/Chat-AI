@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function ownsSpace(spaceId) {
+      return signedIn() &&
+        get(/databases/$(database)/documents/spaces/$(spaceId)).data.ownerUid == request.auth.uid;
+    }
+
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /spaces/{spaceId} {
+      allow read: if signedIn() && resource.data.ownerUid == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if ownsSpace(spaceId);
+      allow delete: if false; // backend only (Admin SDK recursiveDelete)
+
+      match /personas/{personaId} {
+        allow read, write: if ownsSpace(spaceId);
+      }
+      match /userCharacter/{docId} {
+        allow read, write: if ownsSpace(spaceId);
+      }
+      match /chats/{personaId}/messages/{messageId} {
+        allow read: if ownsSpace(spaceId);
+        allow write: if false; // backend only
+      }
+      match /storyFeed/{taskId} {
+        allow read: if ownsSpace(spaceId);
+        allow write: if false; // backend only
+      }
+      match /needsInput/{requestId} {
+        allow read: if ownsSpace(spaceId);
+        allow write: if false; // client answers via POST /api/spaces/:id/needs-input/:reqId/answer
+      }
+      match /npcTranscripts/{conversationId}/messages/{messageId} {
+        allow read, write: if false; // never client-readable -- Admin SDK bypasses this rule entirely
+      }
+    }
+
+    match /notifications/{uid}/items/{notifId} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow update: if signedIn() && request.auth.uid == uid
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow create, delete: if false; // backend only
+    }
+  }
+}
