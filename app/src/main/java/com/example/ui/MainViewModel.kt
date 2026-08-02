@@ -9,6 +9,7 @@ import com.example.data.model.ChatMessageEntity
 import com.example.data.model.PersonaEntity
 import com.example.data.model.UserConfigEntity
 import com.example.data.repository.SoulRepository
+import com.example.data.spaces.SpacesApiClient
 import com.example.util.NotificationHelper
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.flow.*
@@ -24,6 +25,7 @@ sealed class Screen {
     object Settings : Screen()
     object LiteLlmServer : Screen()
     object ChatModel : Screen()
+    object SpacesBackendSettings : Screen()
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -89,6 +91,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     resetTo(Screen.Auth)
                 } else {
                     soulRepository.updateFirebaseIdentity(user.uid, user.email)
+                    syncUserWithBackend(user)
                     if (!hasRoutedPostAuth) {
                         hasRoutedPostAuth = true
                         val config = soulRepository.getUserConfig()
@@ -96,6 +99,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Upserts the signed-in user's profile into the backend (Firestore users/{uid}), covering
+     * every auth path uniformly: email sign-up, email sign-in, Google SSO, and cold-start
+     * rehydration of an already-signed-in session. Fires on every currentUser emission where a
+     * backend URL is configured; best-effort and silent on failure -- the backend runs locally
+     * during dev and may legitimately be offline, and this must never block sign-in/sign-up,
+     * which succeed or fail purely on Firebase Auth.
+     */
+    private fun syncUserWithBackend(user: FirebaseUser) {
+        viewModelScope.launch {
+            val baseUrl = soulRepository.getUserConfig().spacesApiBaseUrl
+            if (baseUrl.isBlank()) return@launch
+            val idToken = authRepository.getIdToken() ?: return@launch
+            SpacesApiClient.syncUser(baseUrl, idToken, user.displayName)
         }
     }
 
@@ -150,6 +170,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun navigateToChatModel() {
         navigateTo(Screen.ChatModel)
+    }
+
+    fun navigateToSpacesBackendSettings() {
+        navigateTo(Screen.SpacesBackendSettings)
     }
 
     private var isAppInForeground = true

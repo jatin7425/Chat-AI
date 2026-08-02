@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.UserConfigEntity
 import com.example.data.repository.SoulRepository
+import com.example.data.spaces.SpacesApiClient
 import com.example.ui.theme.customTextFieldColors
 import kotlinx.coroutines.launch
 
@@ -41,6 +42,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToLiteLlmServer: () -> Unit,
     onNavigateToChatModel: () -> Unit,
+    onNavigateToSpacesBackendSettings: () -> Unit = {},
     currentUserEmail: String? = null,
     onSignOut: () -> Unit = {}
 ) {
@@ -128,6 +130,15 @@ fun SettingsScreen(
                 onClick = onSignOut,
                 showChevron = false,
                 testTag = "settings_sign_out_item"
+            )
+
+            // Story Simulator backend (Express/Firestore) -- separate from the legacy LiteLLM
+            // server below, which the personas/chat feature still talks to directly.
+            SettingsMenuCard(
+                title = "Backend Server",
+                subtitle = userConfig?.spacesApiBaseUrl?.ifBlank { "Not configured" } ?: "Not configured",
+                onClick = onNavigateToSpacesBackendSettings,
+                testTag = "settings_backend_server_item"
             )
 
             // LiteLLM Server item
@@ -635,6 +646,140 @@ fun ChatModelScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SpacesBackendSettingsScreen(
+    userConfig: UserConfigEntity?,
+    soulRepository: SoulRepository,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    var baseUrl by remember { mutableStateOf(userConfig?.spacesApiBaseUrl ?: "") }
+    var isLoading by remember { mutableStateOf(false) }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .padding(top = 12.dp),
+                title = {
+                    Text(
+                        "Backend Server",
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.background
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .navigationBarsPadding()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = "Base URL",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Medium,
+                fontSize = 14.sp
+            )
+
+            OutlinedTextField(
+                value = baseUrl,
+                onValueChange = { baseUrl = it },
+                placeholder = { Text("https://your-dev-tunnel-url.com", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("backend_base_url_input"),
+                shape = RoundedCornerShape(12.dp),
+                colors = customTextFieldColors(),
+                singleLine = true
+            )
+
+            Text(
+                text = "The URL used to reach the Spaces backend -- during development this is your dev tunnel's public URL (ngrok, Cloudflare Tunnel, VS Code dev tunnels, etc.), since the backend only runs locally on your machine for now.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+                lineHeight = 18.sp
+            )
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            isLoading = true
+                            val res = SpacesApiClient.healthCheck(baseUrl)
+                            isLoading = false
+                            if (res.isSuccess) {
+                                Toast.makeText(context, "Connection successful!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Connection failed: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("Test Connection", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        coroutineScope.launch {
+                            soulRepository.updateSpacesApiBaseUrl(baseUrl.trim())
+                            Toast.makeText(context, "Backend URL saved!", Toast.LENGTH_SHORT).show()
+                            onBack()
+                        }
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .testTag("save_backend_url_button"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Text("Save", fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
         }

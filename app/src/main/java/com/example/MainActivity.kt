@@ -37,6 +37,7 @@ import com.example.ui.personas.PersonasScreen
 import com.example.ui.settings.ChatModelScreen
 import com.example.ui.settings.LiteLlmServerScreen
 import com.example.ui.settings.SettingsScreen
+import com.example.ui.settings.SpacesBackendSettingsScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.util.NotificationHelper
 
@@ -216,6 +217,7 @@ fun SoulAppContent(viewModel: MainViewModel) {
                     onBack = { viewModel.navigateToPersonas() },
                     onNavigateToLiteLlmServer = { viewModel.navigateToLiteLlmServer() },
                     onNavigateToChatModel = { viewModel.navigateToChatModel() },
+                    onNavigateToSpacesBackendSettings = { viewModel.navigateToSpacesBackendSettings() },
                     currentUserEmail = currentUser?.email,
                     onSignOut = { viewModel.signOut() }
                 )
@@ -229,6 +231,13 @@ fun SoulAppContent(viewModel: MainViewModel) {
             }
             is Screen.ChatModel -> {
                 ChatModelScreen(
+                    userConfig = userConfig,
+                    soulRepository = viewModel.soulRepository,
+                    onBack = { viewModel.navigateToSettings() }
+                )
+            }
+            is Screen.SpacesBackendSettings -> {
+                SpacesBackendSettingsScreen(
                     userConfig = userConfig,
                     soulRepository = viewModel.soulRepository,
                     onBack = { viewModel.navigateToSettings() }

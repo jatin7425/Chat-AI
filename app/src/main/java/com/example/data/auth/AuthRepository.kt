@@ -55,4 +55,13 @@ class AuthRepository(private val auth: FirebaseAuth = FirebaseAuth.getInstance()
     fun signOut() {
         auth.signOut()
     }
+
+    /** Fresh Firebase ID token for the current user, or null if signed out or the fetch fails. */
+    suspend fun getIdToken(): String? {
+        return try {
+            auth.currentUser?.getIdToken(false)?.await()?.token
+        } catch (e: Exception) {
+            null
+        }
+    }
 }
