@@ -420,6 +420,17 @@ export async function appendNpcTranscriptMessage(
   await npcTranscriptCollection(spaceId, conversationId).add({ personaId, text, createdAt: Date.now() });
 }
 
+export interface NpcTranscriptLine {
+  personaId: string;
+  text: string;
+}
+
+/** Chronological (oldest first) -- lets a bounded exchange feed its own prior lines back to the model each step so later turns respond coherently instead of restarting the conversation from nothing. */
+export async function getNpcTranscriptMessages(spaceId: string, conversationId: string): Promise<NpcTranscriptLine[]> {
+  const snap = await npcTranscriptCollection(spaceId, conversationId).orderBy("createdAt", "asc").get();
+  return snap.docs.map((doc) => doc.data() as NpcTranscriptLine);
+}
+
 export interface CreateStoryFeedTaskInput {
   description: string;
   speakerPersonaId: string;
@@ -436,9 +447,11 @@ export interface CreateStoryFeedTaskInput {
   priority?: number;
 }
 
-export async function createStoryFeedTask(spaceId: string, input: CreateStoryFeedTaskInput): Promise<void> {
+/** Returns the new task's id -- the event-driven orchestrator kicks off (or resumes) a task's exchange chain immediately after creating it, so callers need the id right away rather than discovering it on a later poll. */
+export async function createStoryFeedTask(spaceId: string, input: CreateStoryFeedTaskInput): Promise<string> {
   const now = Date.now();
-  await storyFeedCollection(spaceId).add({
+  const ref = storyFeedCollection(spaceId).doc();
+  await ref.set({
     description: input.description,
     status: "pending",
     speakerPersonaId: input.speakerPersonaId,
@@ -448,10 +461,32 @@ export async function createStoryFeedTask(spaceId: string, input: CreateStoryFee
     topic: input.topic,
     kind: input.kind ?? "delegate",
     priority: input.priority ?? 5,
+    exchangeCount: 0,
     blockedReason: null,
     createdAt: now,
     updatedAt: now,
   });
+  return ref.id;
+}
+
+export interface StoryFeedTaskDoc {
+  id: string;
+  description: string;
+  status: "pending" | "in_progress" | "blocked" | "done";
+  speakerPersonaId: string;
+  targetPersonaId: string | null;
+  targetPersonaName: string;
+  relatedChatPersonaId: string;
+  topic: string;
+  kind?: "delegate" | "self_followup";
+  priority?: number;
+  exchangeCount?: number;
+}
+
+export async function getStoryFeedTask(spaceId: string, taskId: string): Promise<StoryFeedTaskDoc | null> {
+  const doc = await storyFeedCollection(spaceId).doc(taskId).get();
+  if (!doc.exists) return null;
+  return { id: doc.id, ...(doc.data() as Omit<StoryFeedTaskDoc, "id">) };
 }
 
 /** Checks whether an equivalent pending/blocked/in_progress task already exists, so re-detecting the same commitment across retries or a startup backscan doesn't spawn duplicates. */

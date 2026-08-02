@@ -13,8 +13,13 @@ export const config = {
   llmApiKey: process.env.LLM_API_KEY ?? "",
   llmVisionModel: process.env.LLM_VISION_MODEL ?? "",
 
-  runLocalTickLoop: (process.env.RUN_LOCAL_TICK_LOOP ?? "false").toLowerCase() === "true",
-  tickIntervalCron: process.env.TICK_INTERVAL_CRON ?? "*/30 * * * * *",
+  // Event-driven orchestrator (see orchestrator/exchange.ts) -- a bounded persona-to-persona
+  // exchange advances itself across separate serverless invocations by calling this same
+  // deployment's own /api/internal/advance-exchange endpoint. internalBaseUrl is this
+  // deployment's own origin (e.g. https://your-backend.vercel.app, or http://localhost:PORT for
+  // local dev); internalTaskSecret gates that endpoint since it's server-to-server only.
+  internalBaseUrl: process.env.INTERNAL_BASE_URL ?? `http://localhost:${Number(process.env.PORT ?? 8787)}`,
+  internalTaskSecret: process.env.INTERNAL_TASK_SECRET ?? "",
 
   // Cloudflare R2 (S3-compatible) -- persona pfp/chat-background photo storage. Free tier, unlike
   // Firebase Storage which needs the paid Blaze plan.

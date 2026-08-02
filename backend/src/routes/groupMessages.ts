@@ -4,7 +4,9 @@ import { chatComplete } from "../llm/llmClient";
 import { buildGroupPersonaSystemPrompt } from "../orchestrator/promptBuilder";
 import { detectCommitment } from "../orchestrator/commitmentDetector";
 import { detectNewPlaceMention } from "../orchestrator/placeDetector";
+import { runSelfFollowup, startExchange } from "../orchestrator/exchange";
 import { sendPushToUser } from "../services/fcmService";
+import { runInBackground } from "../services/backgroundWork";
 import {
   appendActivityLogEntry,
   appendCoreMemory,
@@ -17,6 +19,7 @@ import {
   driftMood,
   findPlaceByName,
   getGroupChat,
+  getStoryFeedTask,
   resolveDelegationTarget,
   getPersonaDoc,
   getPersonaMemory,
@@ -104,11 +107,13 @@ groupMessagesRouter.post("/spaces/:spaceId/group-chats/:groupChatId/messages", r
       await appendGroupChatMessage(spaceId, groupChatId, "assistant", reply, persona.id);
       replies.push({ personaId: persona.id, text: reply });
 
-      sendPushToUser(space.ownerUid, {
-        title: `${persona.name} in ${groupChat.name}`,
-        body: reply.length > 120 ? `${reply.slice(0, 117)}...` : reply,
-        data: { type: "group_chat", spaceId, groupChatId },
-      }).catch((err) => console.error("[groupMessages] push notification failed:", err));
+      runInBackground(async () => {
+        await sendPushToUser(space.ownerUid, {
+          title: `${persona.name} in ${groupChat.name}`,
+          body: reply.length > 120 ? `${reply.slice(0, 117)}...` : reply,
+          data: { type: "group_chat", spaceId, groupChatId },
+        });
+      });
 
       await appendActivityLogEntry(
         spaceId,
@@ -126,65 +131,66 @@ groupMessagesRouter.post("/spaces/:spaceId/group-chats/:groupChatId/messages", r
       });
 
       // Best-effort, same pattern as direct chat -- never blocks the replies the user is waiting on.
-      detectCommitment(reply, llmConfig)
-        .then(async (result) => {
-          if (result.isMilestone && result.milestoneNote) {
-            await appendCoreMemory(spaceId, persona.id, `${result.milestoneNote} (${space.simDate || "undated"})`);
-          }
-          if (!result.commits) return;
-          if (await hasSimilarPendingTask(spaceId, persona.id, result.topic)) return;
+      runInBackground(async () => {
+        const result = await detectCommitment(reply, llmConfig);
+        if (result.isMilestone && result.milestoneNote) {
+          await appendCoreMemory(spaceId, persona.id, `${result.milestoneNote} (${space.simDate || "undated"})`);
+        }
+        if (!result.commits) return;
+        if (await hasSimilarPendingTask(spaceId, persona.id, result.topic)) return;
 
-          const { target, isSelfReference } = result.targetName
-            ? await resolveDelegationTarget(spaceId, result.targetName, persona.id)
-            : { target: null, isSelfReference: false };
+        const { target, isSelfReference } = result.targetName
+          ? await resolveDelegationTarget(spaceId, result.targetName, persona.id)
+          : { target: null, isSelfReference: false };
 
-          if (target) {
-            await createStoryFeedTask(spaceId, {
-              description: `${persona.name} is planning to reach out to ${target.name}`,
-              speakerPersonaId: persona.id,
-              targetPersonaName: target.name,
-              targetPersonaId: target.id,
-              relatedChatPersonaId: persona.id,
-              topic: result.topic || text.trim(),
-              kind: "delegate",
-            });
-          } else if (result.targetName && !isSelfReference) {
-            await createStoryFeedTask(spaceId, {
-              description: `${persona.name} needs to reach ${result.targetName}, who doesn't exist yet`,
-              speakerPersonaId: persona.id,
-              targetPersonaName: result.targetName,
-              targetPersonaId: null,
-              relatedChatPersonaId: persona.id,
-              topic: result.topic || text.trim(),
-              kind: "delegate",
-            });
-            await createNeedsInput(
-              spaceId,
-              `${persona.name} needs to know who ${result.targetName} is to reach out to them. Create this persona?`,
-              result.targetName,
-              persona.id
-            );
-          } else {
-            await createStoryFeedTask(spaceId, {
-              description: `${persona.name} needs to follow up with you about: ${result.topic}`,
-              speakerPersonaId: persona.id,
-              targetPersonaName: "",
-              targetPersonaId: null,
-              relatedChatPersonaId: persona.id,
-              topic: result.topic,
-              kind: "self_followup",
-            });
-          }
-        })
-        .catch((err) => console.error("[groupMessages] commitment detection failed:", err));
+        if (target) {
+          const taskId = await createStoryFeedTask(spaceId, {
+            description: `${persona.name} is planning to reach out to ${target.name}`,
+            speakerPersonaId: persona.id,
+            targetPersonaName: target.name,
+            targetPersonaId: target.id,
+            relatedChatPersonaId: persona.id,
+            topic: result.topic || text.trim(),
+            kind: "delegate",
+          });
+          if (space.simStatus === "running") startExchange(spaceId, taskId);
+        } else if (result.targetName && !isSelfReference) {
+          await createStoryFeedTask(spaceId, {
+            description: `${persona.name} needs to reach ${result.targetName}, who doesn't exist yet`,
+            speakerPersonaId: persona.id,
+            targetPersonaName: result.targetName,
+            targetPersonaId: null,
+            relatedChatPersonaId: persona.id,
+            topic: result.topic || text.trim(),
+            kind: "delegate",
+          });
+          await createNeedsInput(
+            spaceId,
+            `${persona.name} needs to know who ${result.targetName} is to reach out to them. Create this persona?`,
+            result.targetName,
+            persona.id
+          );
+        } else {
+          const taskId = await createStoryFeedTask(spaceId, {
+            description: `${persona.name} needs to follow up with you about: ${result.topic}`,
+            speakerPersonaId: persona.id,
+            targetPersonaName: "",
+            targetPersonaId: null,
+            relatedChatPersonaId: persona.id,
+            topic: result.topic,
+            kind: "self_followup",
+          });
+          const task = await getStoryFeedTask(spaceId, taskId);
+          if (task) await runSelfFollowup(space, task, llmConfig);
+        }
+      });
 
-      detectNewPlaceMention(`${text} ${reply}`, existingPlaceNames, llmConfig)
-        .then(async (result) => {
-          if (!result.mentionsNewPlace) return;
-          if (await findPlaceByName(spaceId, result.name)) return;
-          await createPlace(spaceId, result.name, result.description);
-        })
-        .catch((err) => console.error("[groupMessages] place detection failed:", err));
+      runInBackground(async () => {
+        const result = await detectNewPlaceMention(`${text} ${reply}`, existingPlaceNames, llmConfig);
+        if (!result.mentionsNewPlace) return;
+        if (await findPlaceByName(spaceId, result.name)) return;
+        await createPlace(spaceId, result.name, result.description);
+      });
     }
 
     res.json({ replies });

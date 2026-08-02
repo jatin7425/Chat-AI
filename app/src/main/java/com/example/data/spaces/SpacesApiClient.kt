@@ -139,6 +139,28 @@ object SpacesApiClient {
             }
         }
 
+    /** Fire-and-forget: tells the backend the user just opened this Space, so it can (debounced) generate a spontaneous activity beat if the Space has been idle a while. */
+    suspend fun notifySpaceView(baseUrl: String, idToken: String, spaceId: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            try {
+                val request = Request.Builder()
+                    .url("${sanitizeBaseUrl(baseUrl)}/api/spaces/$spaceId/view")
+                    .addHeader("Authorization", "Bearer $idToken")
+                    .post("{}".toRequestBody(jsonMediaType))
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        Result.success(Unit)
+                    } else {
+                        Result.failure(IllegalStateException("Notify space view failed: HTTP ${response.code}"))
+                    }
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
     /** Registers this device's FCM token so push notifications for persona replies/simulation events can reach it. */
     suspend fun registerFcmToken(baseUrl: String, idToken: String, token: String): Result<Unit> =
         withContext(Dispatchers.IO) {

@@ -5,25 +5,22 @@
   "type": "commonjs",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1101.0",
+    "@vercel/functions": "^1.6.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
     "firebase-admin": "^12.7.0",
-    "multer": "^2.2.0",
-    "node-cron": "^3.0.3"
+    "multer": "^2.2.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/multer": "^2.2.0",
     "@types/node": "^22.9.0",
-    "@types/node-cron": "^3.0.11",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   }

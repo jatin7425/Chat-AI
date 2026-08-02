@@ -3,9 +3,13 @@ import { requireAuth } from "../middleware/authMiddleware";
 import { firestore } from "../firebaseAdmin";
 import { pingLlmServer } from "../llm/llmClient";
 import { backscanPendingCommitments } from "../orchestrator/backscan";
+import { maybeGenerateSpontaneousActivity } from "../orchestrator/exchange";
 import { dismissNeedsInput } from "../services/chatService";
+import { runInBackground } from "../services/backgroundWork";
 import { assertOwnership, deleteSpaceRecursive, ForbiddenError, NotFoundError } from "../services/spacesService";
 import { getUserLlmConfig } from "../services/usersService";
+
+const SPONTANEOUS_ACTIVITY_DEBOUNCE_MS = 30 * 60 * 1000; // 30 minutes
 
 export const spacesRouter = Router();
 
@@ -22,18 +26,17 @@ spacesRouter.post("/spaces/:spaceId/start", requireAuth, async (req, res) => {
   const uid = res.locals.uid as string;
 
   try {
-    await assertOwnership(spaceId, uid);
+    const space = await assertOwnership(spaceId, uid);
     await firestore.collection("spaces").doc(spaceId).update({ simStatus: "running", updatedAt: Date.now() });
 
     try {
       const llmConfig = await getUserLlmConfig(uid);
       // Wake the LLM server (often a free-tier host like Render that spins down when idle) and
-      // wait for it to actually respond BEFORE the backscan and the tick loop start hammering it
-      // with real calls -- otherwise the first several ticks just fail against a still-sleeping
-      // server while it cold-starts, which is exactly what "simulation isn't doing anything for
-      // the first couple minutes" looks like from the outside.
+      // wait for it to actually respond BEFORE the backscan starts hammering it with real calls --
+      // otherwise the first several exchange steps just fail against a still-sleeping server while
+      // it cold-starts, which is exactly what "nothing's happening" looks like from the outside.
       await pingLlmServer(llmConfig.baseUrl);
-      await backscanPendingCommitments(spaceId, llmConfig);
+      await backscanPendingCommitments({ ...space, simStatus: "running" }, llmConfig);
     } catch (err) {
       // No LLM configured yet, or the scan itself failed -- the simulation is still running,
       // this just means nothing gets backfilled until the user configures one.
@@ -78,6 +81,42 @@ spacesRouter.post("/spaces/:spaceId/needs-input/:requestId/dismiss", requireAuth
       return;
     }
     res.status(500).json({ error: "Failed to dismiss" });
+  }
+});
+
+/**
+ * Called by the app whenever the user opens a Space -- the event-driven replacement for the old
+ * "nothing was due this tick" idle heartbeat. Debounced via lastSpontaneousAt so re-opening the
+ * same Space repeatedly doesn't spam an LLM call every time; fire-and-forget from the client's
+ * perspective, this always responds immediately regardless of whether anything actually fired.
+ */
+spacesRouter.post("/spaces/:spaceId/view", requireAuth, async (req, res) => {
+  const { spaceId } = req.params;
+  const uid = res.locals.uid as string;
+
+  try {
+    const space = await assertOwnership(spaceId, uid);
+    const dueForSpontaneous = Date.now() - (space.lastSpontaneousAt ?? 0) > SPONTANEOUS_ACTIVITY_DEBOUNCE_MS;
+
+    if (dueForSpontaneous) {
+      await firestore.collection("spaces").doc(spaceId).update({ lastSpontaneousAt: Date.now() });
+      runInBackground(async () => {
+        const llmConfig = await getUserLlmConfig(uid);
+        await maybeGenerateSpontaneousActivity(space, llmConfig);
+      });
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    if (err instanceof NotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof ForbiddenError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    res.status(500).json({ error: "Failed to register space view" });
   }
 });
 

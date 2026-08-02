@@ -11,6 +11,8 @@ export interface SpaceDoc {
   createdAt: number;
   updatedAt: number;
   lastTickAt: number;
+  /** Debounces the "user opened this Space" spontaneous-activity beat (see orchestrator/exchange.ts's maybeGenerateSpontaneousActivity) so it doesn't fire on every single visit. */
+  lastSpontaneousAt?: number;
 }
 
 export class ForbiddenError extends Error {}

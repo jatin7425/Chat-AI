@@ -279,6 +279,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openSpace(space: SpaceModel) {
         navigateTo(Screen.SpaceHome(space))
+        notifySpaceView(space)
+    }
+
+    /** Best-effort, fire-and-forget -- lets the backend generate a debounced spontaneous activity beat for idle Spaces (see SpacesApiClient.notifySpaceView). Never blocks navigation or surfaces an error to the user. */
+    private fun notifySpaceView(space: SpaceModel) {
+        viewModelScope.launch {
+            try {
+                val baseUrl = SpacesApiClient.effectiveBaseUrl(soulRepository.getUserConfig().spacesApiBaseUrl)
+                if (baseUrl.isBlank()) return@launch
+                val idToken = authRepository.getIdToken() ?: return@launch
+                SpacesApiClient.notifySpaceView(baseUrl, idToken, space.id)
+            } catch (_: Exception) {
+                // Best-effort -- opening a Space should never fail because of this.
+            }
+        }
     }
 
     fun openSpacePersonas(space: SpaceModel) {

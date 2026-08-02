@@ -4,7 +4,9 @@ import { chatComplete } from "../llm/llmClient";
 import { buildPersonaSystemPrompt } from "../orchestrator/promptBuilder";
 import { detectCommitment } from "../orchestrator/commitmentDetector";
 import { detectNewPlaceMention } from "../orchestrator/placeDetector";
+import { runSelfFollowup, startExchange } from "../orchestrator/exchange";
 import { sendPushToUser } from "../services/fcmService";
+import { runInBackground } from "../services/backgroundWork";
 import {
   appendActivityLogEntry,
   appendCoreMemory,
@@ -20,6 +22,7 @@ import {
   getPersonaMemory,
   getPlaces,
   getRecentDirectMessages,
+  getStoryFeedTask,
   hasSimilarPendingTask,
   popPendingTopic,
   resolveDelegationTarget,
@@ -101,11 +104,13 @@ async function generateAndAppendReply(
   // in SpacesFcmService also gates on the chat being active, but sending unconditionally here
   // keeps the backend simple and correct for the (rarer) case where the reply lands after the
   // user has already navigated away.
-  sendPushToUser(space.ownerUid, {
-    title: persona.name,
-    body: reply.length > 120 ? `${reply.slice(0, 117)}...` : reply,
-    data: { type: "direct_chat", spaceId: space.id, personaId: persona.id },
-  }).catch((err) => console.error("[messages] push notification failed:", err));
+  runInBackground(async () => {
+    await sendPushToUser(space.ownerUid, {
+      title: persona.name,
+      body: reply.length > 120 ? `${reply.slice(0, 117)}...` : reply,
+      data: { type: "direct_chat", spaceId: space.id, personaId: persona.id },
+    });
+  });
 
   await appendActivityLogEntry(
     space.id,
@@ -125,69 +130,75 @@ async function generateAndAppendReply(
   });
 
   // Best-effort: none of this should ever break the reply the user is actually waiting on, so it
-  // all runs after the response-critical work and swallows its own errors.
-  detectCommitment(reply, llmConfig)
-    .then(async (result) => {
-      if (result.isMilestone && result.milestoneNote) {
-        await appendCoreMemory(space.id, persona.id, `${result.milestoneNote} (${space.simDate || "undated"})`);
-      }
-      if (!result.commits) return;
-      if (await hasSimilarPendingTask(space.id, persona.id, result.topic)) return;
+  // all runs in the background after the response-critical work and swallows its own errors.
+  runInBackground(async () => {
+    const result = await detectCommitment(reply, llmConfig);
+    if (result.isMilestone && result.milestoneNote) {
+      await appendCoreMemory(space.id, persona.id, `${result.milestoneNote} (${space.simDate || "undated"})`);
+    }
+    if (!result.commits) return;
+    if (await hasSimilarPendingTask(space.id, persona.id, result.topic)) return;
 
-      const { target, isSelfReference } = result.targetName
-        ? await resolveDelegationTarget(space.id, result.targetName, persona.id)
-        : { target: null, isSelfReference: false };
+    const { target, isSelfReference } = result.targetName
+      ? await resolveDelegationTarget(space.id, result.targetName, persona.id)
+      : { target: null, isSelfReference: false };
 
-      if (target) {
-        await createStoryFeedTask(space.id, {
-          description: `${persona.name} is planning to reach out to ${target.name}`,
-          speakerPersonaId: persona.id,
-          targetPersonaName: target.name,
-          targetPersonaId: target.id,
-          relatedChatPersonaId: persona.id,
-          topic: result.topic || latestUserText,
-          kind: "delegate",
-        });
-      } else if (result.targetName && !isSelfReference) {
-        await createStoryFeedTask(space.id, {
-          description: `${persona.name} needs to reach ${result.targetName}, who doesn't exist yet`,
-          speakerPersonaId: persona.id,
-          targetPersonaName: result.targetName,
-          targetPersonaId: null,
-          relatedChatPersonaId: persona.id,
-          topic: result.topic || latestUserText,
-          kind: "delegate",
-        });
-        await createNeedsInput(
-          space.id,
-          `${persona.name} needs to know who ${result.targetName} is to reach out to them. Create this persona?`,
-          result.targetName,
-          persona.id
-        );
-      } else {
-        // A bare commitment with no named other party ("I'll get back to you"), or one that
-        // resolved back to the persona themselves -- either way, the same persona follows up
-        // with the user once the tick loop gets to it, not a delegate handoff.
-        await createStoryFeedTask(space.id, {
-          description: `${persona.name} needs to follow up with you about: ${result.topic}`,
-          speakerPersonaId: persona.id,
-          targetPersonaName: "",
-          targetPersonaId: null,
-          relatedChatPersonaId: persona.id,
-          topic: result.topic,
-          kind: "self_followup",
-        });
-      }
-    })
-    .catch((err) => console.error("[messages] commitment detection failed:", err));
+    if (target) {
+      // Delegate handoff -- only actually starts the persona-to-persona exchange chain if
+      // background chatter is enabled for this Space; either way the user's own reply above
+      // already happened, this is purely about whether personas also talk to each other.
+      const taskId = await createStoryFeedTask(space.id, {
+        description: `${persona.name} is planning to reach out to ${target.name}`,
+        speakerPersonaId: persona.id,
+        targetPersonaName: target.name,
+        targetPersonaId: target.id,
+        relatedChatPersonaId: persona.id,
+        topic: result.topic || latestUserText,
+        kind: "delegate",
+      });
+      if (space.simStatus === "running") startExchange(space.id, taskId);
+    } else if (result.targetName && !isSelfReference) {
+      await createStoryFeedTask(space.id, {
+        description: `${persona.name} needs to reach ${result.targetName}, who doesn't exist yet`,
+        speakerPersonaId: persona.id,
+        targetPersonaName: result.targetName,
+        targetPersonaId: null,
+        relatedChatPersonaId: persona.id,
+        topic: result.topic || latestUserText,
+        kind: "delegate",
+      });
+      await createNeedsInput(
+        space.id,
+        `${persona.name} needs to know who ${result.targetName} is to reach out to them. Create this persona?`,
+        result.targetName,
+        persona.id
+      );
+    } else {
+      // A bare commitment with no named other party ("I'll get back to you"), or one that
+      // resolved back to the persona themselves -- either way, the same persona follows up with
+      // the user directly, not a delegate handoff, so it always runs regardless of the Space's
+      // background-chatter switch.
+      const taskId = await createStoryFeedTask(space.id, {
+        description: `${persona.name} needs to follow up with you about: ${result.topic}`,
+        speakerPersonaId: persona.id,
+        targetPersonaName: "",
+        targetPersonaId: null,
+        relatedChatPersonaId: persona.id,
+        topic: result.topic,
+        kind: "self_followup",
+      });
+      const task = await getStoryFeedTask(space.id, taskId);
+      if (task) await runSelfFollowup(space, task, llmConfig);
+    }
+  });
 
-  detectNewPlaceMention(`${latestUserText} ${reply}`, (await getPlaces(space.id)).map((p) => p.name), llmConfig)
-    .then(async (result) => {
-      if (!result.mentionsNewPlace) return;
-      if (await findPlaceByName(space.id, result.name)) return;
-      await createPlace(space.id, result.name, result.description);
-    })
-    .catch((err) => console.error("[messages] place detection failed:", err));
+  runInBackground(async () => {
+    const existingPlaceNames = (await getPlaces(space.id)).map((p) => p.name);
+    const result = await detectNewPlaceMention(`${latestUserText} ${reply}`, existingPlaceNames, llmConfig);
+    if (!result.mentionsNewPlace) return;
+    if (await findPlaceByName(space.id, result.name)) return;
+    await createPlace(space.id, result.name, result.description);
+  });
 
   return reply;
 }
