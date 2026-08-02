@@ -14,4 +14,10 @@ interface UserConfigDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateConfig(config: UserConfigEntity)
+
+    @Query("UPDATE user_config SET firebaseUid = :uid, firebaseEmail = :email WHERE id = 1")
+    suspend fun updateFirebaseIdentity(uid: String?, email: String?)
+
+    @Query("UPDATE user_config SET spacesApiBaseUrl = :url WHERE id = 1")
+    suspend fun updateSpacesApiBaseUrl(url: String)
 }

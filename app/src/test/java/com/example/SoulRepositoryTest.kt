@@ -102,6 +102,8 @@ class FakeUserConfigDao : UserConfigDao {
     override fun getUserConfigFlow(): Flow<UserConfigEntity?> = flowOf(null)
     override suspend fun getUserConfig(): UserConfigEntity? = null
     override suspend fun insertOrUpdateConfig(config: UserConfigEntity) {}
+    override suspend fun updateFirebaseIdentity(uid: String?, email: String?) {}
+    override suspend fun updateSpacesApiBaseUrl(url: String) {}
 }
 
 class FakeChatDao : ChatDao {

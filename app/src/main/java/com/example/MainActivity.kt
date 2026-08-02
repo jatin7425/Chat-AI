@@ -115,6 +115,7 @@ fun SoulAppContent(viewModel: MainViewModel) {
     val userConfig by viewModel.userConfigState.collectAsStateWithLifecycle()
     val showCreateSheet by viewModel.showCreateSheet.collectAsStateWithLifecycle()
     val editingPersona by viewModel.editingPersona.collectAsStateWithLifecycle()
+    val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
 
     androidx.activity.compose.BackHandler(enabled = canGoBack) {
         viewModel.navigateBack()
@@ -133,6 +134,12 @@ fun SoulAppContent(viewModel: MainViewModel) {
         label = "screen_transition"
     ) { screen ->
         when (screen) {
+            is Screen.Auth -> {
+                com.example.ui.auth.AuthScreen(
+                    authRepository = viewModel.authRepository,
+                    onAuthenticated = { /* no-op: MainViewModel's currentUser collector drives routing */ }
+                )
+            }
             is Screen.Onboarding -> {
                 OnboardingScreen(
                     soulRepository = viewModel.soulRepository,
@@ -208,7 +215,9 @@ fun SoulAppContent(viewModel: MainViewModel) {
                     soulRepository = viewModel.soulRepository,
                     onBack = { viewModel.navigateToPersonas() },
                     onNavigateToLiteLlmServer = { viewModel.navigateToLiteLlmServer() },
-                    onNavigateToChatModel = { viewModel.navigateToChatModel() }
+                    onNavigateToChatModel = { viewModel.navigateToChatModel() },
+                    currentUserEmail = currentUser?.email,
+                    onSignOut = { viewModel.signOut() }
                 )
             }
             is Screen.LiteLlmServer -> {

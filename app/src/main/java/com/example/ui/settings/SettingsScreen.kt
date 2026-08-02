@@ -40,7 +40,9 @@ fun SettingsScreen(
     soulRepository: SoulRepository,
     onBack: () -> Unit,
     onNavigateToLiteLlmServer: () -> Unit,
-    onNavigateToChatModel: () -> Unit
+    onNavigateToChatModel: () -> Unit,
+    currentUserEmail: String? = null,
+    onSignOut: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -112,6 +114,22 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // Account item (minimal for now; fleshed out into a full Account section later)
+            SettingsMenuCard(
+                title = "Signed in as",
+                subtitle = currentUserEmail ?: "Unknown",
+                onClick = {},
+                showChevron = false,
+                testTag = "settings_account_item"
+            )
+            SettingsMenuCard(
+                title = "Sign Out",
+                subtitle = "You'll need to sign in again to continue",
+                onClick = onSignOut,
+                showChevron = false,
+                testTag = "settings_sign_out_item"
+            )
+
             // LiteLLM Server item
             SettingsMenuCard(
                 title = "LiteLLM Server",

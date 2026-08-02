@@ -40,6 +40,14 @@ class SoulRepository(
         userConfigDao.insertOrUpdateConfig(config)
     }
 
+    suspend fun updateFirebaseIdentity(uid: String?, email: String?) {
+        userConfigDao.updateFirebaseIdentity(uid, email)
+    }
+
+    suspend fun updateSpacesApiBaseUrl(url: String) {
+        userConfigDao.updateSpacesApiBaseUrl(url)
+    }
+
     suspend fun getPersonaById(id: Long): PersonaEntity? {
         return personaDao.getPersonaById(id)
     }

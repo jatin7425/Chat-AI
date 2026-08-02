@@ -3,16 +3,19 @@ package com.example.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.auth.AuthRepository
 import com.example.data.db.AppDatabase
 import com.example.data.model.ChatMessageEntity
 import com.example.data.model.PersonaEntity
 import com.example.data.model.UserConfigEntity
 import com.example.data.repository.SoulRepository
 import com.example.util.NotificationHelper
+import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 sealed class Screen {
+    object Auth : Screen()
     object Onboarding : Screen()
     object Personas : Screen()
     data class Chat(val persona: PersonaEntity, val sessionId: String) : Screen()
@@ -46,7 +49,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             initialValue = null
         )
 
-    private val _screenStack = MutableStateFlow(listOf<Screen>(Screen.Onboarding))
+    val authRepository = AuthRepository()
+    val currentUser: StateFlow<FirebaseUser?> = authRepository.authStateFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, authRepository.currentUser)
+
+    private val _screenStack = MutableStateFlow(listOf<Screen>(Screen.Auth))
     val currentScreen: StateFlow<Screen> = _screenStack
         .map { it.last() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, Screen.Onboarding)
@@ -72,17 +79,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _screenStack.value = listOf(screen)
     }
 
-    private var hasHandledOnboardingInit = false
+    private var hasRoutedPostAuth = false
 
     init {
         viewModelScope.launch {
-            userConfigState.collect { config ->
-                if (!hasHandledOnboardingInit && config != null) {
-                    hasHandledOnboardingInit = true
-                    resetTo(if (config.isOnboardingCompleted) Screen.Personas else Screen.Onboarding)
+            currentUser.collect { user ->
+                if (user == null) {
+                    hasRoutedPostAuth = false
+                    resetTo(Screen.Auth)
+                } else {
+                    soulRepository.updateFirebaseIdentity(user.uid, user.email)
+                    if (!hasRoutedPostAuth) {
+                        hasRoutedPostAuth = true
+                        val config = soulRepository.getUserConfig()
+                        resetTo(if (config.isOnboardingCompleted) Screen.Personas else Screen.Onboarding)
+                    }
                 }
             }
         }
+    }
+
+    fun signOut() {
+        authRepository.signOut()
+        resetTo(Screen.Auth)
     }
 
     fun completeOnboarding(

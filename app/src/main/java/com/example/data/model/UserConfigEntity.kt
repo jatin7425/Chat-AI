@@ -11,5 +11,8 @@ data class UserConfigEntity(
     val baseUrl: String = "",
     val selectedModel: String = "nvidia",
     val darkTheme: Boolean = true,
-    val isOnboardingCompleted: Boolean = false
+    val isOnboardingCompleted: Boolean = false,
+    val firebaseUid: String? = null,
+    val firebaseEmail: String? = null,
+    val spacesApiBaseUrl: String = ""
 )

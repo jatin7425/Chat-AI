@@ -28,7 +28,7 @@ import androidx.room.migration.Migration
         ChatMessageEntity::class,
         MemoryRecapEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -99,6 +99,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE user_config ADD COLUMN firebaseUid TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE user_config ADD COLUMN firebaseEmail TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE user_config ADD COLUMN spacesApiBaseUrl TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         private val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE personas ADD COLUMN avatarBlob BLOB DEFAULT NULL")
@@ -114,7 +122,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "soul_ai_database"
                 )
-                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .fallbackToDestructiveMigrationOnDowngrade()
                 .addCallback(DatabaseCallback())
                 .build()
