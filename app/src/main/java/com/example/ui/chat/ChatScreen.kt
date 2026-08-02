@@ -41,7 +41,6 @@ import com.example.data.model.PersonaEntity
 import com.example.data.repository.SoulRepository
 import com.example.ui.components.AvatarView
 import com.example.ui.theme.customTextFieldColors
-import com.example.util.NvidiaTtsManager
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -69,17 +68,8 @@ fun ChatScreen(
     var inputText by remember { mutableStateOf("") }
     var isSending by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
-    var ttsEnabled by remember { mutableStateOf(false) }
     var showEmotionDialog by remember { mutableStateOf(false) }
     var showInviteSheet by remember { mutableStateOf(false) }
-
-    // Natural TTS Manager
-    val ttsManager = remember { NvidiaTtsManager(context) }
-    DisposableEffect(Unit) {
-        onDispose {
-            ttsManager.release()
-        }
-    }
 
     // Observe live persona state from database for AI emotional attachment updates
     val livePersonaFlow = remember(persona.id) { soulRepository.getPersonaByIdFlow(persona.id) }
@@ -100,19 +90,6 @@ fun ChatScreen(
     LaunchedEffect(messages.size, isSending) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
-        }
-    }
-
-    // Auto TTS for newly arrived AI replies if enabled
-    val lastMessage = messages.lastOrNull()
-    LaunchedEffect(lastMessage?.messageId) {
-        if (lastMessage != null && lastMessage.role == "assistant" && ttsEnabled && !lastMessage.isError) {
-            kotlinx.coroutines.delay(100) // allow DB persona updates to propagate
-            ttsManager.speak(
-                lastMessage.messageId,
-                lastMessage.content,
-                currentPersona.voice ?: ""
-            )
         }
     }
 
@@ -262,10 +239,7 @@ fun ChatScreen(
                     },
                     navigationIcon = {
                         IconButton(
-                            onClick = {
-                                ttsManager.stop()
-                                onBack()
-                            },
+                            onClick = onBack,
                             modifier = Modifier.testTag("chat_back_button")
                         ) {
                             Icon(
@@ -284,21 +258,6 @@ fun ChatScreen(
                                 imageVector = Icons.Default.GroupAdd,
                                 contentDescription = "Invite Persona",
                                 tint = Color(0xFFA3E635)
-                            )
-                        }
-
-                        IconButton(
-                            onClick = {
-                                ttsEnabled = !ttsEnabled
-                                if (!ttsEnabled) ttsManager.stop()
-                                val status = if (ttsEnabled) "Auto TTS Enabled" else "Auto TTS Disabled"
-                                Toast.makeText(context, status, Toast.LENGTH_SHORT).show()
-                            }
-                        ) {
-                            Icon(
-                                imageVector = if (ttsEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
-                                contentDescription = "TTS Toggle",
-                                tint = if (ttsEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
 
@@ -352,7 +311,6 @@ fun ChatScreen(
                                     leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
                                     onClick = {
                                         menuExpanded = false
-                                        ttsManager.stop()
                                         coroutineScope.launch {
                                             soulRepository.clearChatHistory(sessionId)
                                         }
@@ -422,17 +380,9 @@ fun ChatScreen(
                         ChatMessageBubble(
                             message = msg,
                             persona = currentPersona,
-                            isCurrentlySpeaking = ttsManager.currentlySpeakingId == msg.messageId,
                             onCopy = {
                                 clipboardManager.setText(AnnotatedString(msg.content))
                                 Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
-                            },
-                            onToggleSpeak = {
-                                ttsManager.speak(
-                                    msg.messageId,
-                                    msg.content,
-                                    currentPersona.voice ?: ""
-                                )
                             },
                             onRetry = { handleRetry() }
                         )
@@ -961,9 +911,7 @@ fun buildFormattedChatMessage(
 fun ChatMessageBubble(
     message: ChatMessageEntity,
     persona: PersonaEntity,
-    isCurrentlySpeaking: Boolean,
     onCopy: () -> Unit,
-    onToggleSpeak: () -> Unit,
     onRetry: (() -> Unit)? = null
 ) {
     val isUser = message.role == "user"
@@ -1015,7 +963,7 @@ fun ChatMessageBubble(
             buildFormattedChatMessage(message.content, limeColor = Color(0xFFA3E635))
         }
 
-        // Persona AI Message Styling (Dark card with soft lime left accent border, play TTS icon, avatar on left)
+        // Persona AI Message Styling (Dark card with soft lime left accent border, avatar on left)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Start,
@@ -1077,28 +1025,6 @@ fun ChatMessageBubble(
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
                             )
                         }
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    // Natural TTS Play/Stop Button next to AI Message
-                    IconButton(
-                        onClick = onToggleSpeak,
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (isCurrentlySpeaking)
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
-                                else Color.Transparent
-                            )
-                    ) {
-                        Icon(
-                            imageVector = if (isCurrentlySpeaking) Icons.Default.PauseCircle else Icons.Default.PlayCircleOutline,
-                            contentDescription = if (isCurrentlySpeaking) "Pause Voice" else "Play Voice",
-                            tint = if (isCurrentlySpeaking) MaterialTheme.colorScheme.primary else Color.Gray,
-                            modifier = Modifier.size(22.dp)
-                        )
                     }
                 }
 

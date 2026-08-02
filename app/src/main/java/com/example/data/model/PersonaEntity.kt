@@ -35,7 +35,6 @@ data class PersonaEntity(
 
     val emotionsJson: String = "[]", // JSON array of EmotionItem
     val isDefault: Boolean = false,
-    val voice: String = "",
     val createdAt: Long = System.currentTimeMillis()
 ) {
     override fun equals(other: Any?): Boolean {
@@ -72,7 +71,6 @@ data class PersonaEntity(
         if (customChatBgOpacity != other.customChatBgOpacity) return false
         if (emotionsJson != other.emotionsJson) return false
         if (isDefault != other.isDefault) return false
-        if (voice != other.voice) return false
         if (createdAt != other.createdAt) return false
 
         return true
@@ -101,7 +99,6 @@ data class PersonaEntity(
         result = 31 * result + customChatBgOpacity.hashCode()
         result = 31 * result + emotionsJson.hashCode()
         result = 31 * result + isDefault.hashCode()
-        result = 31 * result + voice.hashCode()
         result = 31 * result + createdAt.hashCode()
         return result
     }

@@ -150,14 +150,6 @@ class SoulRepository(
 
             var cleanedReply = rawReply
             var updatedEmotions: List<EmotionItem>? = null
-            
-            var detectedVoiceEmotion = ""
-            val voiceEmotionRegex = Regex("""^\[(.*?)\]\s*""")
-            val voiceMatch = voiceEmotionRegex.find(cleanedReply.trim())
-            if (voiceMatch != null) {
-                detectedVoiceEmotion = voiceMatch.groupValues[1]
-                cleanedReply = cleanedReply.replaceFirst(voiceMatch.value, "").trim()
-            }
 
             // Extract AI self-updated emotions if present in tag: [EMOTIONS: [{"emotion":"...", "percentage": 80}]]
             val emotionsRegex = Regex("""\[EMOTIONS:\s*(\[\s*\{.*?\}\s*\])\s*\]""", RegexOption.DOT_MATCHES_ALL)
@@ -182,19 +174,6 @@ class SoulRepository(
                 if (latestPersona.emotionsJson != updatedJson) {
                     latestPersona = latestPersona.copy(emotionsJson = updatedJson)
                     needsUpdate = true
-                }
-            }
-            if (detectedVoiceEmotion.isNotEmpty()) {
-                val baseVoice = com.example.util.VoiceEmotions.getBaseVoice(latestPersona.voice ?: "")
-                // Validate if it's a supported emotion
-                val supported = com.example.util.VoiceEmotions.getSupportedEmotions(baseVoice)
-                val cleanEmotion = detectedVoiceEmotion.trim()
-                if (supported.contains(cleanEmotion)) {
-                    val newVoice = "$baseVoice.$cleanEmotion"
-                    if (latestPersona.voice != newVoice) {
-                        latestPersona = latestPersona.copy(voice = newVoice)
-                        needsUpdate = true
-                    }
                 }
             }
             if (needsUpdate) {
@@ -277,14 +256,6 @@ class SoulRepository(
 
             var cleanedReply = rawReply
             var updatedEmotions: List<EmotionItem>? = null
-            
-            var detectedVoiceEmotion = ""
-            val voiceEmotionRegex = Regex("""^\[(.*?)\]\s*""")
-            val voiceMatch = voiceEmotionRegex.find(cleanedReply.trim())
-            if (voiceMatch != null) {
-                detectedVoiceEmotion = voiceMatch.groupValues[1]
-                cleanedReply = cleanedReply.replaceFirst(voiceMatch.value, "").trim()
-            }
 
             val emotionsRegex = Regex("""\[EMOTIONS:\s*(\[\s*\{.*?\}\s*\])\s*\]""", RegexOption.DOT_MATCHES_ALL)
             val match = emotionsRegex.find(rawReply)
@@ -306,19 +277,6 @@ class SoulRepository(
                 if (latestPersona.emotionsJson != updatedJson) {
                     latestPersona = latestPersona.copy(emotionsJson = updatedJson)
                     needsUpdate = true
-                }
-            }
-            if (detectedVoiceEmotion.isNotEmpty()) {
-                val baseVoice = com.example.util.VoiceEmotions.getBaseVoice(latestPersona.voice ?: "")
-                // Validate if it's a supported emotion
-                val supported = com.example.util.VoiceEmotions.getSupportedEmotions(baseVoice)
-                val cleanEmotion = detectedVoiceEmotion.trim()
-                if (supported.contains(cleanEmotion)) {
-                    val newVoice = "$baseVoice.$cleanEmotion"
-                    if (latestPersona.voice != newVoice) {
-                        latestPersona = latestPersona.copy(voice = newVoice)
-                        needsUpdate = true
-                    }
                 }
             }
             if (needsUpdate) {
@@ -470,8 +428,6 @@ class SoulRepository(
             append("- Talk directly to ${listener.name}.\n")
             append("- Keep your response brief, natural, and expressive (2 to 3 sentences maximum).\n")
             append("- Stay strictly in character as ${speaker.name}.\n")
-            val emotionsStr = com.example.util.VoiceEmotions.getSupportedEmotions(com.example.util.VoiceEmotions.getBaseVoice(speaker.voice ?: "")).joinToString(", ") { "[${it}]" }
-            append("- Begin your response with an emotion tag in brackets that BEST matches your current tone. YOU MUST ONLY USE ONE OF THESE EXACT TAGS: $emotionsStr. Then write your response.\n")
             append("- Do NOT include your own name or prefixes like \"${speaker.name}:\".\n")
             append("- YOU HAVE FULL MEMORY of your private conversations with $userName and your past discussions in this and other lounges! Feel free to reference what $userName told you or what happened in other chats naturally.")
         }
@@ -506,31 +462,10 @@ class SoulRepository(
             val rawReply = (response.choices?.firstOrNull()?.message?.content ?: "Hey ${listener.name}, glad to talk with you!").replace(Regex("""<think>.*?</think>""", RegexOption.DOT_MATCHES_ALL), "").trim()
 
             var cleanedReply = rawReply.trim()
-            
-            var detectedVoiceEmotion = ""
-            val voiceEmotionRegex = Regex("""^\[(.*?)\]\s*""")
-            val voiceMatch = voiceEmotionRegex.find(cleanedReply)
-            if (voiceMatch != null) {
-                detectedVoiceEmotion = voiceMatch.groupValues[1]
-                cleanedReply = cleanedReply.replaceFirst(voiceMatch.value, "").trim()
-            }
-            
+
             val prefix = "${speaker.name}:"
             if (cleanedReply.startsWith(prefix, ignoreCase = true)) {
                 cleanedReply = cleanedReply.substring(prefix.length).trim()
-            }
-            
-            if (detectedVoiceEmotion.isNotEmpty()) {
-                var latestSpeaker = personaDao.getPersonaById(speaker.id) ?: speaker
-                val baseVoice = com.example.util.VoiceEmotions.getBaseVoice(latestSpeaker.voice ?: "")
-                val supported = com.example.util.VoiceEmotions.getSupportedEmotions(baseVoice)
-                val cleanEmotion = detectedVoiceEmotion.trim()
-                if (supported.contains(cleanEmotion)) {
-                    val newVoice = "$baseVoice.$cleanEmotion"
-                    if (latestSpeaker.voice != newVoice) {
-                        personaDao.updatePersona(latestSpeaker.copy(voice = newVoice))
-                    }
-                }
             }
 
             val assistantMsgEntity = ChatMessageEntity(
@@ -650,9 +585,7 @@ class SoulRepository(
             append("2. Provide deep emotional support, empathetic listening, advice, and sincere companionship tailored to your relationship with $userName.\n")
             append("3. Keep responses conversational, natural, and expressive, like typing messages in a personal messaging application.\n")
             append("4. Use tone, warmth, and emotion matching your relationship (${persona.relationship}) and traits (${persona.traits}).\n")
-            val emotionsStr = com.example.util.VoiceEmotions.getSupportedEmotions(com.example.util.VoiceEmotions.getBaseVoice(persona.voice ?: "")).joinToString(", ") { "[${it}]" }
-            append("5. Begin your response with an emotion tag in brackets that BEST matches your current tone. YOU MUST ONLY USE ONE OF THESE EXACT TAGS: $emotionsStr. Then write your response.\n")
-            append("6. DYNAMIC EMOTIONAL ATTACHMENT UPDATE:\n")
+            append("5. DYNAMIC EMOTIONAL ATTACHMENT UPDATE:\n")
             append("   At the very end of your response, evaluate your updated emotional attachment percentages towards $userName (0-100%).\n")
             append("   Append a single line at the end in this format:\n")
             append("   [EMOTIONS: [{\"emotion\": \"Love\", \"percentage\": 80}, {\"emotion\": \"Care\", \"percentage\": 85}]]\n")

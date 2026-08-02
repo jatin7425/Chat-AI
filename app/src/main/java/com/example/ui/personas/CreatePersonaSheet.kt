@@ -43,9 +43,6 @@ fun CreatePersonaSheet(
 ) {
     val context = LocalContext.current
     var name by remember { mutableStateOf(existingPersona?.name ?: "") }
-    val voiceOptions = listOf("Magpie-Multilingual.HI-IN.Phung", "Magpie-Multilingual.HI-IN.Jason", "Magpie-Multilingual.HI-IN.Mia", "Magpie-Multilingual.HI-IN.Aria", "Magpie-Multilingual.HI-IN.Leo", "Magpie-Multilingual.HI-IN.Isabela", "Magpie-Multilingual.HI-IN.Ray", "Magpie-Multilingual.HI-IN.Long", "Magpie-Multilingual.HI-IN.Sofia", "Magpie-Multilingual.HI-IN.Diego", "Magpie-Multilingual.HI-IN.Pascal")
-    var voice by remember { mutableStateOf(if (existingPersona?.voice.isNullOrBlank()) "Magpie-Multilingual.HI-IN.Jason" else com.example.util.VoiceEmotions.getBaseVoice(existingPersona?.voice ?: "Magpie-Multilingual.HI-IN.Jason")) }
-    var voiceExpanded by remember { mutableStateOf(false) }
     var age by remember { mutableStateOf(existingPersona?.age?.toString() ?: "30") }
 
     val genderOptions = listOf("Female", "Male", "Non-binary", "Other", "Custom...")
@@ -291,40 +288,6 @@ fun CreatePersonaSheet(
                     }
                 }
                 
-                // Voice Selection Dropdown
-                ExposedDropdownMenuBox(
-                    expanded = voiceExpanded,
-                    onExpandedChange = { voiceExpanded = !voiceExpanded },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    OutlinedTextField(
-                        value = voice,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Voice") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = voiceExpanded) },
-                        modifier = Modifier
-                            .menuAnchor(MenuAnchorType.PrimaryNotEditable)
-                            .fillMaxWidth(),
-                        colors = customTextFieldColors()
-                    )
-                    ExposedDropdownMenu(
-                        expanded = voiceExpanded,
-                        onDismissRequest = { voiceExpanded = false }
-                    ) {
-                        voiceOptions.forEach { option ->
-                            DropdownMenuItem(
-                                text = { Text(option) },
-                                onClick = {
-                                    voice = option
-                                    voiceExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-
-
                 if (isCustomRelationship) {
                     OutlinedTextField(
                         value = customRelationshipText,
@@ -813,7 +776,6 @@ fun CreatePersonaSheet(
                             customChatBgUri = customChatBgUri.ifBlank { null },
                             customChatBgBlob = customChatBgBlob,
                             customChatBgOpacity = customChatBgOpacity,
-                            voice = voice,
                             emotionsJson = soulRepository.serializeEmotions(emotionsList.toList())
                         )
                         onSave(persona)
